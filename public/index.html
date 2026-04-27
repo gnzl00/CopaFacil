@@ -7,7 +7,7 @@
     <title>Copa Facil</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=7" />
+    <link rel="stylesheet" href="/styles.css?v=8" />
   </head>
   <body>
     <header class="app-header">
@@ -293,7 +293,14 @@
             <form id="teamForm" class="inline-form">
               <input name="name" placeholder="Nombre del equipo" maxlength="60" required />
               <input name="shortName" placeholder="Siglas" maxlength="8" />
-              <input name="color" type="color" value="#2563eb" aria-label="Color" />
+              <label class="small-button file-picker" for="teamLogoInput">Logo</label>
+              <input
+                class="visually-hidden"
+                id="teamLogoInput"
+                name="logoFile"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+              />
               <button class="primary-button" type="submit">Anadir</button>
             </form>
             <div class="admin-list" id="teamsAdminList"></div>
@@ -327,6 +334,6 @@
     </main>
 
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=7" defer></script>
+    <script src="/app.js?v=8" defer></script>
   </body>
 </html>

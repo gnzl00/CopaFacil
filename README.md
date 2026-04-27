@@ -43,6 +43,7 @@ Despues de cada despliegue, si el navegador muestra una version antigua, haz una
 - Los visitantes pueden elegir la temporada que quieren consultar.
 - El boton `Admin` abre el inicio de sesion.
 - Solo el administrador autenticado puede crear temporadas, editar nombre del torneo, equipos y partidos.
+- Cada equipo puede tener un logo propio en PNG, JPG o WEBP. La app lo optimiza antes de guardarlo.
 - Al guardar un partido, el administrador puede registrar goleadores, asistentes, tarjetas amarillas/rojas y MVP.
 - La vista publica calcula tablas de clasificacion, maximos goleadores, asistentes, tarjetas y MVPs por temporada.
 - Desde el panel de administrador puedes exportar un JSON con todas las temporadas, equipos, partidos y estadisticas, e importarlo despues para restaurar esos datos.

@@ -14,7 +14,7 @@ const CONFIGURED_DATA_FILE = process.env.DATA_FILE || DEFAULT_DATA_FILE;
 let dataFile = CONFIGURED_DATA_FILE;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
-const MAX_BODY_BYTES = 5_000_000;
+const MAX_BODY_BYTES = 8_000_000;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -40,10 +40,10 @@ function defaultTournament() {
     subtitle: "Resultados, calendario y clasificacion en tiempo real",
     season,
     teams: [
-      { id: "team-atlas", name: "Atlas FC", shortName: "ATL", color: "#2563eb" },
-      { id: "team-norte", name: "Norte United", shortName: "NOR", color: "#16a34a" },
-      { id: "team-rivera", name: "Rivera Club", shortName: "RIV", color: "#f97316" },
-      { id: "team-valle", name: "Valle 7", shortName: "VAL", color: "#dc2626" }
+      { id: "team-atlas", name: "Atlas FC", shortName: "ATL", logoDataUrl: "" },
+      { id: "team-norte", name: "Norte United", shortName: "NOR", logoDataUrl: "" },
+      { id: "team-rivera", name: "Rivera Club", shortName: "RIV", logoDataUrl: "" },
+      { id: "team-valle", name: "Valle 7", shortName: "VAL", logoDataUrl: "" }
     ],
     matches: [
       {
@@ -284,11 +284,6 @@ function normalizeText(value, fallback, maxLength) {
   return text.slice(0, maxLength);
 }
 
-function normalizeColor(value, fallback = "#2563eb") {
-  const color = String(value || "").trim();
-  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
-}
-
 function normalizeScore(value) {
   if (value === null || value === "" || typeof value === "undefined") {
     return null;
@@ -313,13 +308,24 @@ function normalizeImportedId(value, prefix) {
   return id;
 }
 
+function normalizeLogoDataUrl(value) {
+  const logo = String(value || "").trim();
+  if (!logo) {
+    return "";
+  }
+  if (logo.length > 1_500_000) {
+    return "";
+  }
+  return /^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(logo) ? logo : "";
+}
+
 function normalizeTeam(input, existingId) {
   const name = normalizeText(input.name, "Nuevo equipo", 60);
   return {
     id: existingId || normalizeImportedId(input.id, "team"),
     name,
     shortName: normalizeText(input.shortName, name.slice(0, 3).toUpperCase(), 8).toUpperCase(),
-    color: normalizeColor(input.color)
+    logoDataUrl: normalizeLogoDataUrl(input.logoDataUrl)
   };
 }
 
@@ -548,7 +554,7 @@ function buildStandings(tournament) {
         teamId: team.id,
         teamName: team.name,
         shortName: team.shortName,
-        color: team.color,
+        logoDataUrl: team.logoDataUrl,
         played: 0,
         won: 0,
         drawn: 0,

@@ -99,8 +99,28 @@ function findTeam(id) {
     id,
     name: "Equipo eliminado",
     shortName: "---",
-    color: "#64748b"
+    logoDataUrl: ""
   };
+}
+
+function initials(value) {
+  return String(value || "?")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 3);
+}
+
+function teamLogoMarkup(team) {
+  if (team.logoDataUrl) {
+    return `<img class="team-logo" src="${escapeHtml(team.logoDataUrl)}" alt="" loading="lazy" />`;
+  }
+  return `<span class="team-logo team-logo-fallback">${escapeHtml(
+    initials(team.shortName || team.teamName || team.name)
+  )}</span>`;
 }
 
 function teamOptions(selectedId = "") {
@@ -194,7 +214,7 @@ function renderStandings(standings) {
           <tr>
             <td>
               <span class="team-cell">
-                <span class="team-dot" style="background:${escapeHtml(row.color)}"></span>
+                ${teamLogoMarkup(row)}
                 ${escapeHtml(row.teamName)}
               </span>
             </td>
@@ -262,12 +282,12 @@ function renderMatches() {
             </div>
             <div class="match-teams">
               <span class="team-cell">
-                <span class="team-dot" style="background:${escapeHtml(home.color)}"></span>
+                ${teamLogoMarkup(home)}
                 ${escapeHtml(home.name)}
               </span>
               <span class="score">${score}</span>
               <span class="team-cell">
-                <span class="team-dot" style="background:${escapeHtml(away.color)}"></span>
+                ${teamLogoMarkup(away)}
                 ${escapeHtml(away.name)}
               </span>
             </div>
@@ -326,10 +346,20 @@ function renderAdmin() {
     state.data.teams
       .map(
         (team) => `
-          <form class="admin-row edit-grid" data-team-id="${escapeHtml(team.id)}">
+          <form class="admin-row edit-grid team-edit-grid" data-team-id="${escapeHtml(team.id)}">
+            <span class="team-logo-preview">${teamLogoMarkup(team)}</span>
             <input name="name" value="${escapeHtml(team.name)}" maxlength="60" required />
             <input name="shortName" value="${escapeHtml(team.shortName)}" maxlength="8" />
-            <input name="color" type="color" value="${escapeHtml(team.color)}" aria-label="Color" />
+            <input name="logoDataUrl" type="hidden" value="${escapeHtml(team.logoDataUrl || "")}" />
+            <label class="small-button file-picker" for="logo-${escapeHtml(team.id)}">Logo</label>
+            <input
+              class="visually-hidden"
+              id="logo-${escapeHtml(team.id)}"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              data-team-logo-input
+            />
+            <button class="small-button" type="button" data-clear-logo>Sin logo</button>
             <button class="small-button" type="submit">Guardar</button>
             <button class="danger-button" type="button" data-delete-team="${escapeHtml(team.id)}">Borrar</button>
           </form>
@@ -422,6 +452,62 @@ function renderCardRow(card = {}) {
 
 function formPayload(form) {
   return Object.fromEntries(new FormData(form).entries());
+}
+
+function imageFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      reject(new Error("El logo debe ser PNG, JPG o WEBP."));
+      return;
+    }
+    if (file.size > 3_000_000) {
+      reject(new Error("El logo no puede superar 3 MB."));
+      return;
+    }
+
+    const image = new Image();
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer el logo."));
+    reader.onload = () => {
+      image.onerror = () => reject(new Error("No se pudo procesar el logo."));
+      image.onload = () => {
+        const size = 256;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const context = canvas.getContext("2d");
+        context.clearRect(0, 0, size, size);
+
+        const scale = Math.min(size / image.width, size / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        const x = (size - width) / 2;
+        const y = (size - height) / 2;
+        context.drawImage(image, x, y, width, height);
+        URL.revokeObjectURL(image.src);
+        resolve(canvas.toDataURL("image/webp", 0.86));
+      };
+      image.src = URL.createObjectURL(file);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function teamPayload(form) {
+  const payload = formPayload(form);
+  delete payload.logoFile;
+
+  const hiddenLogo = form.querySelector('input[name="logoDataUrl"]');
+  const fileInput = form.querySelector('input[type="file"]');
+  payload.logoDataUrl = hiddenLogo ? hiddenLogo.value : "";
+  if (fileInput?.files?.[0]) {
+    payload.logoDataUrl = await imageFileToDataUrl(fileInput.files[0]);
+  }
+  return payload;
 }
 
 function matchPayload(form) {
@@ -582,27 +668,48 @@ els.importDataButton.addEventListener("click", async () => {
 
 els.teamForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await saveAndRefresh(
-    `${adminBasePath()}/teams`,
-    { method: "POST", body: JSON.stringify(formPayload(event.currentTarget)) },
-    "Equipo anadido."
-  );
-  event.currentTarget.reset();
-  event.currentTarget.color.value = "#2563eb";
+  try {
+    await saveAndRefresh(
+      `${adminBasePath()}/teams`,
+      { method: "POST", body: JSON.stringify(await teamPayload(event.currentTarget)) },
+      "Equipo anadido."
+    );
+    event.currentTarget.reset();
+  } catch (error) {
+    showToast(error.message);
+  }
 });
 
 els.teamsAdminList.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.target.closest("[data-team-id]");
   if (!form) return;
-  await saveAndRefresh(
-    `${adminBasePath()}/teams/${encodeURIComponent(form.dataset.teamId)}`,
-    { method: "PUT", body: JSON.stringify(formPayload(form)) },
-    "Equipo guardado."
-  );
+  try {
+    await saveAndRefresh(
+      `${adminBasePath()}/teams/${encodeURIComponent(form.dataset.teamId)}`,
+      { method: "PUT", body: JSON.stringify(await teamPayload(form)) },
+      "Equipo guardado."
+    );
+  } catch (error) {
+    showToast(error.message);
+  }
 });
 
 els.teamsAdminList.addEventListener("click", async (event) => {
+  const clearLogoButton = event.target.closest("[data-clear-logo]");
+  if (clearLogoButton) {
+    const form = clearLogoButton.closest("[data-team-id]");
+    form.querySelector('input[name="logoDataUrl"]').value = "";
+    form.querySelector('input[type="file"]').value = "";
+    const preview = form.querySelector(".team-logo-preview");
+    preview.innerHTML = teamLogoMarkup({
+      name: form.name.value,
+      shortName: form.shortName.value,
+      logoDataUrl: ""
+    });
+    return;
+  }
+
   const button = event.target.closest("[data-delete-team]");
   if (!button) return;
   try {
@@ -612,6 +719,23 @@ els.teamsAdminList.addEventListener("click", async (event) => {
       "Equipo borrado."
     );
   } catch (error) {
+    showToast(error.message);
+  }
+});
+
+els.teamsAdminList.addEventListener("change", async (event) => {
+  const input = event.target.closest("[data-team-logo-input]");
+  if (!input?.files?.[0]) return;
+  const form = input.closest("[data-team-id]");
+  try {
+    const logoDataUrl = await imageFileToDataUrl(input.files[0]);
+    form.querySelector('input[name="logoDataUrl"]').value = logoDataUrl;
+    form.querySelector(".team-logo-preview").innerHTML = teamLogoMarkup({
+      shortName: form.shortName.value,
+      logoDataUrl
+    });
+  } catch (error) {
+    input.value = "";
     showToast(error.message);
   }
 });
