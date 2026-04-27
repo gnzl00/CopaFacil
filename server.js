@@ -9,7 +9,9 @@ const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
-const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data", "copafacil.json");
+const DEFAULT_DATA_FILE = path.join(__dirname, "data", "copafacil.json");
+const CONFIGURED_DATA_FILE = process.env.DATA_FILE || DEFAULT_DATA_FILE;
+let dataFile = CONFIGURED_DATA_FILE;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
 
@@ -64,31 +66,65 @@ function defaultData() {
   };
 }
 
-function ensureDataFile() {
-  const dir = path.dirname(DATA_FILE);
+function isPermissionError(error) {
+  return ["EACCES", "EPERM", "EROFS"].includes(error && error.code);
+}
+
+function assertWritableDataPath(filePath) {
+  const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  if (!fs.existsSync(DATA_FILE)) {
+  const probeFile = path.join(dir, `.write-test-${process.pid}`);
+  fs.writeFileSync(probeFile, "ok", "utf8");
+  fs.unlinkSync(probeFile);
+}
+
+function selectDataFile() {
+  try {
+    assertWritableDataPath(CONFIGURED_DATA_FILE);
+    dataFile = CONFIGURED_DATA_FILE;
+    return;
+  } catch (error) {
+    if (CONFIGURED_DATA_FILE === DEFAULT_DATA_FILE || !isPermissionError(error)) {
+      throw error;
+    }
+    console.warn(
+      `No se puede escribir en DATA_FILE=${CONFIGURED_DATA_FILE}. ` +
+        `Usando almacenamiento temporal en ${DEFAULT_DATA_FILE}. ` +
+        "En Render, monta un Persistent Disk en /var/data para conservar datos."
+    );
+  }
+
+  assertWritableDataPath(DEFAULT_DATA_FILE);
+  dataFile = DEFAULT_DATA_FILE;
+}
+
+function ensureDataFile() {
+  const dir = path.dirname(dataFile);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  if (!fs.existsSync(dataFile)) {
     writeData(defaultData());
   }
 }
 
 function readData() {
   ensureDataFile();
-  const raw = fs.readFileSync(DATA_FILE, "utf8");
+  const raw = fs.readFileSync(dataFile, "utf8");
   return JSON.parse(raw);
 }
 
 function writeData(data) {
-  const dir = path.dirname(DATA_FILE);
+  const dir = path.dirname(dataFile);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
   const nextData = { ...data, updatedAt: new Date().toISOString() };
-  const tempFile = `${DATA_FILE}.${process.pid}.tmp`;
+  const tempFile = `${dataFile}.${process.pid}.tmp`;
   fs.writeFileSync(tempFile, `${JSON.stringify(nextData, null, 2)}\n`, "utf8");
-  fs.renameSync(tempFile, DATA_FILE);
+  fs.renameSync(tempFile, dataFile);
   return nextData;
 }
 
@@ -520,9 +556,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+selectDataFile();
+ensureDataFile();
+
 server.listen(PORT, () => {
   if (!process.env.ADMIN_PASSWORD) {
     console.warn("ADMIN_PASSWORD no esta definido. Usando contrasena local: admin123");
   }
+  console.log(`Datos guardados en ${dataFile}`);
   console.log(`Copa Facil disponible en http://localhost:${PORT}`);
 });

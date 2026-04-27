@@ -31,7 +31,11 @@ El archivo `render.yaml` deja preparado un Web Service de Node. Para que los dat
 DATA_FILE=/var/data/copafacil.json
 ```
 
-Si despliegas sin disco persistente, la app funciona, pero Render puede perder los datos guardados al recrear la instancia.
+Si creas el servicio manualmente y no has anadido un Persistent Disk en `/var/data`, no configures `DATA_FILE=/var/data/copafacil.json`. La app usara `data/copafacil.json` como almacenamiento temporal. Funcionara, pero Render puede perder los datos al recrear la instancia.
+
+Si ves `EACCES: permission denied, mkdir '/var/data'`, significa que `DATA_FILE` apunta a `/var/data`, pero Render no tiene un disco persistente montado ahi o no puede escribir en esa ruta.
+
+Despues de cada despliegue, si el navegador muestra una version antigua, haz una recarga fuerte. La app actualiza el service worker para evitar que HTML, CSS y JS queden obsoletos.
 
 ## Modelo de uso
 
