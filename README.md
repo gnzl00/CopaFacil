@@ -81,8 +81,7 @@ Como no se va a usar Firebase Storage, los logos se guardan optimizados dentro d
 - Cada equipo puede tener un logo propio en PNG, JPG o WEBP. La app lo optimiza antes de guardarlo.
 - Al guardar un partido, el administrador puede registrar goleadores, asistentes, tarjetas amarillas/rojas y MVP.
 - La vista publica calcula tablas de clasificacion, maximos goleadores, asistentes, tarjetas y MVPs por temporada.
-- Desde el panel de administrador puedes exportar un JSON con todas las temporadas, equipos, partidos y estadisticas, e importarlo despues para restaurar esos datos.
 
-## Futuro Android
+## PWA y futuro Android
 
-La interfaz ya incluye `manifest.webmanifest` y `sw.js`, por lo que puede evolucionar a PWA. Si despues quieres publicarla como app Android, el camino natural es envolver esta web con Capacitor y reutilizar la misma API.
+La web incluye `manifest.webmanifest`, iconos instalables y `sw.js`. En navegadores compatibles se puede anadir a la pantalla de inicio y conservar una copia cacheada de la vista publica. Si despues quieres publicarla como app Android, el camino natural es envolver esta web con Capacitor y reutilizar la misma API.

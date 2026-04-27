@@ -209,7 +209,7 @@ main {
   grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   grid-template-areas:
     "season settings"
-    "backup teams"
+    "teams teams"
     "matches matches";
   grid-auto-flow: row dense;
 }
@@ -220,10 +220,6 @@ main {
 
 .admin-settings-panel {
   grid-area: settings;
-}
-
-.admin-backup-panel {
-  grid-area: backup;
 }
 
 .admin-teams-panel {
@@ -471,27 +467,10 @@ button:focus-visible {
   flex: 0 0 auto;
 }
 
-.backup-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
-  align-items: center;
-}
-
 .file-picker {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.selected-file {
-  color: var(--muted);
-  font-size: 0.88rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  align-self: center;
 }
 
 .visually-hidden {
@@ -610,7 +589,6 @@ button:focus-visible {
     grid-template-areas:
       "season"
       "settings"
-      "backup"
       "teams"
       "matches";
   }
@@ -656,7 +634,6 @@ button:focus-visible {
     grid-template-areas:
       "season"
       "settings"
-      "backup"
       "teams"
       "matches";
   }
@@ -695,7 +672,6 @@ button:focus-visible {
   }
 
   .top-actions,
-  .backup-actions,
   .season-form,
   .inline-form,
   .edit-grid,

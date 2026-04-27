@@ -472,14 +472,6 @@ function publicPayload(data, selectedTournamentId) {
   };
 }
 
-function exportPayload(data) {
-  return {
-    exportVersion: 2,
-    exportedAt: new Date().toISOString(),
-    ...data
-  };
-}
-
 function buildStandings(tournament) {
   const table = new Map(
     tournament.teams.map((team) => [
@@ -654,21 +646,6 @@ async function handleApi(req, res, url) {
 
   const data = await store.read();
   const body = ["POST", "PUT", "PATCH"].includes(req.method) ? await readRequestJson(req) : {};
-
-  if (req.method === "GET" && url.pathname === "/api/admin/export") {
-    sendJson(res, 200, exportPayload(data));
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/admin/import") {
-    try {
-      const normalized = normalizeData(body).data;
-      sendJson(res, 200, publicPayload(await store.write(normalized), normalized.activeTournamentId));
-    } catch (error) {
-      sendError(res, 400, error.message);
-    }
-    return;
-  }
 
   if (req.method === "POST" && url.pathname === "/api/admin/tournaments") {
     const tournament = normalizeTournament({

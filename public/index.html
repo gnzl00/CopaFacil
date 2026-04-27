@@ -7,7 +7,8 @@
     <title>Copa Facil</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/styles.css?v=9" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="stylesheet" href="/styles.css?v=10" />
   </head>
   <body>
     <header class="app-header">
@@ -258,31 +259,6 @@
             </form>
           </section>
 
-          <section class="panel admin-backup-panel">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">Respaldo</p>
-                <h2>Datos</h2>
-              </div>
-            </div>
-            <div class="backup-actions">
-              <button class="primary-button" id="exportDataButton" type="button">
-                Exportar JSON
-              </button>
-              <label class="small-button file-picker" for="importDataInput">Elegir JSON</label>
-              <input
-                class="visually-hidden"
-                id="importDataInput"
-                type="file"
-                accept=".json,application/json"
-              />
-              <button class="small-button" id="importDataButton" type="button" disabled>
-                Importar JSON
-              </button>
-              <span class="selected-file" id="importFileName">Ningun fichero seleccionado</span>
-            </div>
-          </section>
-
           <section class="panel admin-teams-panel">
             <div class="section-head">
               <div>
@@ -334,6 +310,6 @@
     </main>
 
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
-  <script src="/app.js?v=9" defer></script>
+  <script src="/app.js?v=10" defer></script>
   </body>
 </html>
