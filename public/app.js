@@ -2,13 +2,17 @@ const state = {
   data: null,
   authenticated: false,
   view: "public",
-  selectedTournamentId: null
+  selectedTournamentId: null,
+  selectedRound: "all",
+  favoriteTeamIds: new Set(),
+  pendingServiceWorker: null
 };
 
 const els = {
   seasonLabel: document.querySelector("#seasonLabel"),
   tournamentName: document.querySelector("#tournamentName"),
   tournamentSubtitle: document.querySelector("#tournamentSubtitle"),
+  phaseLabel: document.querySelector("#phaseLabel"),
   tournamentSelect: document.querySelector("#tournamentSelect"),
   metricTeams: document.querySelector("#metricTeams"),
   metricPlayed: document.querySelector("#metricPlayed"),
@@ -16,7 +20,10 @@ const els = {
   metricUpdated: document.querySelector("#metricUpdated"),
   standingsBody: document.querySelector("#standingsBody"),
   matchesList: document.querySelector("#matchesList"),
+  roundFilter: document.querySelector("#roundFilter"),
   matchFilter: document.querySelector("#matchFilter"),
+  favoriteTeamsList: document.querySelector("#favoriteTeamsList"),
+  notificationButton: document.querySelector("#notificationButton"),
   goalsStatsBody: document.querySelector("#goalsStatsBody"),
   assistsStatsBody: document.querySelector("#assistsStatsBody"),
   cardsStatsBody: document.querySelector("#cardsStatsBody"),
@@ -37,7 +44,9 @@ const els = {
   teamsAdminList: document.querySelector("#teamsAdminList"),
   matchForm: document.querySelector("#matchForm"),
   matchesAdminList: document.querySelector("#matchesAdminList"),
-  toast: document.querySelector("#toast")
+  toast: document.querySelector("#toast"),
+  updateBanner: document.querySelector("#updateBanner"),
+  reloadUpdateButton: document.querySelector("#reloadUpdateButton")
 };
 
 const statusLabels = {
@@ -54,6 +63,9 @@ const cardLabels = {
 const MAX_LOGO_SOURCE_BYTES = 2_000_000;
 const MAX_LOGO_DATA_URL_LENGTH = 70_000;
 const LOGO_CANVAS_SIZE = 192;
+const FAVORITES_KEY = "copa-facil-favorite-teams";
+const SEEN_RESULTS_KEY = "copa-facil-seen-results";
+const REFRESH_INTERVAL_MS = 60_000;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -134,11 +146,125 @@ function teamOptions(selectedId = "") {
     .join("");
 }
 
+function roundOptions(selectedRound = "") {
+  return (state.data.rounds || [])
+    .map(
+      (round) =>
+        `<option value="${escapeHtml(round)}" ${round === selectedRound ? "selected" : ""}>${escapeHtml(
+          round
+        )}</option>`
+    )
+    .join("");
+}
+
 function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.remove("hidden");
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => els.toast.classList.add("hidden"), 2800);
+}
+
+function loadFavoriteTeamIds() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveFavoriteTeamIds() {
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(state.favoriteTeamIds)));
+}
+
+function loadSeenResults() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SEEN_RESULTS_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSeenResults(seenResults) {
+  localStorage.setItem(SEEN_RESULTS_KEY, JSON.stringify(seenResults));
+}
+
+function finishedResultSignature(match) {
+  if (
+    match.status !== "finished" ||
+    !Number.isInteger(match.homeScore) ||
+    !Number.isInteger(match.awayScore)
+  ) {
+    return "";
+  }
+  return `${match.status}:${match.homeScore}-${match.awayScore}`;
+}
+
+function resultTitle(match) {
+  const home = findTeam(match.homeTeamId);
+  const away = findTeam(match.awayTeamId);
+  return `${home.name} ${match.homeScore} - ${match.awayScore} ${away.name}`;
+}
+
+function resultBody(match) {
+  return `${match.round} - ${statusLabels[match.status]}`;
+}
+
+async function showResultNotification(match) {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+  const options = {
+    body: resultBody(match),
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: `copa-facil-result-${match.id}`,
+    data: { url: "/" }
+  };
+  try {
+    const registration = await navigator.serviceWorker?.ready;
+    if (registration?.showNotification) {
+      await registration.showNotification(resultTitle(match), options);
+      return;
+    }
+  } catch {
+    // Fall back to the page notification below.
+  }
+  new Notification(resultTitle(match), options);
+}
+
+function syncSeenResults(data, notify = true) {
+  if (!data?.matches) return;
+  const tournamentId = data.selectedTournamentId;
+  const seenResults = loadSeenResults();
+  const seenTournament = seenResults[tournamentId] || {};
+  const firstSync = !seenResults[tournamentId];
+  const nextSeenTournament = { ...seenTournament };
+
+  data.matches.forEach((match) => {
+    const signature = finishedResultSignature(match);
+    if (!signature) return;
+
+    const favoriteMatch =
+      state.favoriteTeamIds.has(match.homeTeamId) || state.favoriteTeamIds.has(match.awayTeamId);
+    const changed = seenTournament[match.id] && seenTournament[match.id] !== signature;
+
+    if (notify && !firstSync && favoriteMatch && changed) {
+      showResultNotification(match);
+    }
+    nextSeenTournament[match.id] = signature;
+  });
+
+  seenResults[tournamentId] = nextSeenTournament;
+  saveSeenResults(seenResults);
+}
+
+function notificationButtonText() {
+  if (!("Notification" in window)) return "No compatible";
+  if (Notification.permission === "granted") return "Notificaciones activas";
+  if (Notification.permission === "denied") return "Notificaciones bloqueadas";
+  return "Activar notificaciones";
 }
 
 async function api(path, options = {}) {
@@ -159,6 +285,7 @@ async function loadData(tournamentId = state.selectedTournamentId) {
   state.data = data;
   state.selectedTournamentId = data.selectedTournamentId;
   state.authenticated = Boolean(session.authenticated);
+  syncSeenResults(data);
   render();
 }
 
@@ -190,20 +317,39 @@ function render() {
   els.seasonLabel.textContent = `Temporada ${tournament.season}`;
   els.tournamentName.textContent = tournament.name;
   els.tournamentSubtitle.textContent = tournament.subtitle;
+  els.phaseLabel.textContent = tournament.name;
   els.metricTeams.textContent = teams.length;
   els.metricPlayed.textContent = matches.filter((match) => match.status === "finished").length;
   els.metricPending.textContent = matches.filter((match) => match.status !== "finished").length;
   els.metricUpdated.textContent = formatShortDate(updatedAt);
 
   renderTournamentSelectors();
+  renderRoundSelector();
   renderStandings(standings);
   renderMatches();
   renderStats();
+  renderFavorites();
   renderAdmin();
   els.logoutButton.classList.toggle("hidden", !state.authenticated);
   els.loginPanel.classList.toggle("hidden", state.authenticated);
   els.adminPanel.classList.toggle("hidden", !state.authenticated);
   setView(state.view);
+}
+
+function renderRoundSelector() {
+  const rounds = state.data.rounds || [];
+  if (state.selectedRound !== "all" && !rounds.includes(state.selectedRound)) {
+    state.selectedRound = "all";
+  }
+  els.roundFilter.innerHTML = [
+    `<option value="all">Todas las jornadas</option>`,
+    ...rounds.map(
+      (round) =>
+        `<option value="${escapeHtml(round)}" ${round === state.selectedRound ? "selected" : ""}>${escapeHtml(
+          round
+        )}</option>`
+    )
+  ].join("");
 }
 
 function renderStandings(standings) {
@@ -261,8 +407,10 @@ function renderMatchDetails(match) {
 
 function renderMatches() {
   const filter = els.matchFilter.value;
+  const round = state.selectedRound;
   const matches = [...state.data.matches]
     .filter((match) => filter === "all" || match.status === filter)
+    .filter((match) => round === "all" || match.round === round)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   els.matchesList.innerHTML =
@@ -327,6 +475,25 @@ function renderStats() {
   els.mvpsStatsBody.innerHTML = renderStatRows(stats.mvps, "mvps", "Sin MVPs registrados.");
 }
 
+function renderFavorites() {
+  els.notificationButton.textContent = notificationButtonText();
+  els.notificationButton.disabled = !("Notification" in window) || Notification.permission === "denied";
+  els.favoriteTeamsList.innerHTML =
+    state.data.teams
+      .map(
+        (team) => `
+          <label class="favorite-chip">
+            <input type="checkbox" value="${escapeHtml(team.id)}" ${
+              state.favoriteTeamIds.has(team.id) ? "checked" : ""
+            } />
+            ${teamLogoMarkup(team)}
+            <span>${escapeHtml(team.name)}</span>
+          </label>
+        `
+      )
+      .join("") || `<span class="muted">Anade equipos para elegir favoritos.</span>`;
+}
+
 function renderAdmin() {
   if (!state.authenticated || !state.data) return;
 
@@ -334,8 +501,10 @@ function renderAdmin() {
   els.settingsForm.name.value = tournament.name;
   els.settingsForm.subtitle.value = tournament.subtitle;
   els.settingsForm.season.value = tournament.season;
+  els.settingsForm.roundCount.value = tournament.roundCount || state.data.rounds?.length || 1;
   els.deleteTournamentButton.disabled = state.data.tournaments.length <= 1;
 
+  els.matchForm.round.innerHTML = roundOptions(state.data.rounds?.[0] || "");
   els.matchForm.homeTeamId.innerHTML = teamOptions();
   els.matchForm.awayTeamId.innerHTML = teamOptions(state.data.teams[1]?.id || "");
   if (!els.matchForm.date.value) {
@@ -378,7 +547,7 @@ function renderAdminMatch(match) {
   return `
     <form class="admin-row match-admin-card" data-match-id="${escapeHtml(match.id)}">
       <div class="match-edit-grid">
-        <input name="round" value="${escapeHtml(match.round)}" maxlength="40" required />
+        <select name="round">${roundOptions(match.round)}</select>
         <input name="date" type="datetime-local" value="${toDatetimeLocal(match.date)}" required />
         <select name="homeTeamId">${teamOptions(match.homeTeamId)}</select>
         <select name="awayTeamId">${teamOptions(match.awayTeamId)}</select>
@@ -547,13 +716,49 @@ async function saveAndRefresh(path, options, successMessage) {
   showToast(successMessage);
 }
 
+state.favoriteTeamIds = loadFavoriteTeamIds();
+
 document.querySelectorAll("[data-view]").forEach((button) => {
   button.addEventListener("click", () => setView(button.dataset.view));
 });
 
-els.tournamentSelect.addEventListener("change", () => loadData(els.tournamentSelect.value));
-els.adminTournamentSelect.addEventListener("change", () => loadData(els.adminTournamentSelect.value));
+els.tournamentSelect.addEventListener("change", () => {
+  state.selectedRound = "all";
+  loadData(els.tournamentSelect.value);
+});
+els.adminTournamentSelect.addEventListener("change", () => {
+  state.selectedRound = "all";
+  loadData(els.adminTournamentSelect.value);
+});
+els.roundFilter.addEventListener("change", () => {
+  state.selectedRound = els.roundFilter.value;
+  renderMatches();
+});
 els.matchFilter.addEventListener("change", renderMatches);
+
+els.favoriteTeamsList.addEventListener("change", (event) => {
+  const input = event.target.closest('input[type="checkbox"]');
+  if (!input) return;
+  if (input.checked) {
+    state.favoriteTeamIds.add(input.value);
+  } else {
+    state.favoriteTeamIds.delete(input.value);
+  }
+  saveFavoriteTeamIds();
+  syncSeenResults(state.data, false);
+});
+
+els.notificationButton.addEventListener("click", async () => {
+  if (!("Notification" in window)) {
+    showToast("Este navegador no soporta notificaciones.");
+    return;
+  }
+  if (Notification.permission === "default") {
+    await Notification.requestPermission();
+  }
+  renderFavorites();
+  showToast(Notification.permission === "granted" ? "Notificaciones activadas." : "Notificaciones bloqueadas.");
+});
 
 els.showPasswordCheckbox.addEventListener("change", () => {
   els.adminPassword.type = els.showPasswordCheckbox.checked ? "text" : "password";
@@ -740,12 +945,46 @@ els.matchesAdminList.addEventListener("click", async (event) => {
   }
 });
 
+function showUpdateBanner(worker) {
+  state.pendingServiceWorker = worker;
+  els.updateBanner.classList.remove("hidden");
+}
+
+els.reloadUpdateButton.addEventListener("click", () => {
+  if (!state.pendingServiceWorker) {
+    window.location.reload();
+    return;
+  }
+  state.pendingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+});
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .catch(() => {});
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker.register("/sw.js").then((registration) => {
+      if (registration.waiting) {
+        showUpdateBanner(registration.waiting);
+      }
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        if (!worker) return;
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateBanner(worker);
+          }
+        });
+      });
+    }).catch(() => {});
   });
 }
 
 loadData().catch((error) => showToast(error.message));
+window.setInterval(() => {
+  loadData(currentTournamentId()).catch(() => {});
+}, REFRESH_INTERVAL_MS);

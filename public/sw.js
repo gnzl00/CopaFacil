@@ -1,11 +1,11 @@
-const CACHE_NAME = "copa-facil-v10";
-const API_CACHE_NAME = "copa-facil-api-v10";
+const CACHE_NAME = "copa-facil-v11";
+const API_CACHE_NAME = "copa-facil-api-v11";
 
 const APP_SHELL = [
   "/",
   "/index.html",
-  "/styles.css?v=10",
-  "/app.js?v=10",
+  "/styles.css?v=11",
+  "/app.js?v=11",
   "/manifest.webmanifest",
   "/icon.svg",
   "/icon-192.png",
@@ -16,7 +16,6 @@ const APP_SHELL = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -27,6 +26,27 @@ self.addEventListener("activate", (event) => {
         Promise.all(keys.filter((key) => ![CACHE_NAME, API_CACHE_NAME].includes(key)).map((key) => caches.delete(key)))
       )
       .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const client = clients.find((item) => item.url.includes(self.location.origin));
+      if (client) {
+        client.focus();
+        return;
+      }
+      return self.clients.openWindow(url);
+    })
   );
 });
 

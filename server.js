@@ -14,6 +14,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
 const MAX_BODY_BYTES = 8_000_000;
 const MAX_LOGO_DATA_URL_LENGTH = 70_000;
+const MAX_ROUNDS = 60;
 let store;
 
 const MIME_TYPES = {
@@ -39,6 +40,8 @@ function defaultTournament() {
     name: "Copa Facil",
     subtitle: "Resultados, calendario y clasificacion en tiempo real",
     season,
+    roundCount: 1,
+    rounds: ["Jornada 1"],
     teams: [
       { id: "team-atlas", name: "Atlas FC", shortName: "ATL", logoDataUrl: "" },
       { id: "team-norte", name: "Norte United", shortName: "NOR", logoDataUrl: "" },
@@ -83,7 +86,7 @@ function defaultTournament() {
 function defaultData() {
   const tournament = defaultTournament();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     activeTournamentId: tournament.id,
     tournaments: [tournament],
     updatedAt: new Date().toISOString()
@@ -234,6 +237,48 @@ function normalizeCardType(value) {
   return value === "red" ? "red" : "yellow";
 }
 
+function normalizeRoundCount(value, fallback = 1) {
+  const number = Number(value);
+  if (!Number.isInteger(number)) {
+    return fallback;
+  }
+  return Math.min(MAX_ROUNDS, Math.max(1, number));
+}
+
+function defaultRoundName(index) {
+  return `Jornada ${index + 1}`;
+}
+
+function normalizeRoundList(input, matches = []) {
+  const requestedCount = normalizeRoundCount(
+    input.roundCount,
+    Array.isArray(input.rounds) && input.rounds.length ? input.rounds.length : 1
+  );
+  const rounds = [];
+  const seen = new Set();
+
+  const addRound = (value) => {
+    const name = normalizeText(value, "", 40);
+    const key = name.toLocaleLowerCase("es");
+    if (!name || seen.has(key) || rounds.length >= MAX_ROUNDS) {
+      return;
+    }
+    seen.add(key);
+    rounds.push(name);
+  };
+
+  if (Array.isArray(input.rounds)) {
+    input.rounds.slice(0, requestedCount).forEach((round) => addRound(typeof round === "string" ? round : round?.name));
+  }
+
+  while (rounds.length < requestedCount) {
+    addRound(defaultRoundName(rounds.length));
+  }
+
+  matches.forEach((match) => addRound(match.round));
+  return rounds;
+}
+
 function normalizeImportedId(value, prefix) {
   const id = String(value || "").trim();
   if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) {
@@ -348,6 +393,8 @@ function normalizeTournament(input, existingId) {
     name: normalizeText(input.name, "Copa Facil", 80),
     subtitle: normalizeText(input.subtitle, "Resultados, calendario y clasificacion", 120),
     season,
+    roundCount: 1,
+    rounds: [],
     teams: [],
     matches: []
   };
@@ -382,6 +429,9 @@ function normalizeTournament(input, existingId) {
         .filter(Boolean)
     : [];
 
+  tournament.rounds = normalizeRoundList(input, tournament.matches);
+  tournament.roundCount = tournament.rounds.length;
+
   return tournament;
 }
 
@@ -408,12 +458,12 @@ function normalizeData(input) {
       : tournaments[0].id;
     return {
       data: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         activeTournamentId,
         tournaments,
         updatedAt: input.updatedAt || new Date().toISOString()
       },
-      changed: input.schemaVersion !== 2
+      changed: input.schemaVersion !== 3
     };
   }
 
@@ -424,7 +474,7 @@ function normalizeData(input) {
   });
   return {
     data: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       activeTournamentId: oldTournament.id,
       tournaments: [oldTournament],
       updatedAt: input.updatedAt || new Date().toISOString()
@@ -462,8 +512,11 @@ function publicPayload(data, selectedTournamentId) {
       id: tournament.id,
       name: tournament.name,
       subtitle: tournament.subtitle,
-      season: tournament.season
+      season: tournament.season,
+      roundCount: tournament.roundCount,
+      rounds: tournament.rounds
     },
+    rounds: tournament.rounds,
     teams: tournament.teams,
     matches: tournament.matches,
     standings: buildStandings(tournament),
@@ -652,6 +705,7 @@ async function handleApi(req, res, url) {
       name: body.name,
       subtitle: body.subtitle,
       season: body.season,
+      roundCount: body.roundCount,
       teams: [],
       matches: []
     });
@@ -691,11 +745,14 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "PUT" && rest === "settings") {
+    const rounds = normalizeRoundList({ roundCount: body.roundCount, rounds: tournament.rounds }, tournament.matches);
     data.tournaments[tournamentIndex] = {
       ...tournament,
       name: normalizeText(body.name, tournament.name, 80),
       subtitle: normalizeText(body.subtitle, tournament.subtitle, 120),
-      season: normalizeText(body.season, tournament.season, 20)
+      season: normalizeText(body.season, tournament.season, 20),
+      rounds,
+      roundCount: rounds.length
     };
     data.activeTournamentId = tournament.id;
     sendJson(res, 200, publicPayload(await store.write(data), tournament.id));

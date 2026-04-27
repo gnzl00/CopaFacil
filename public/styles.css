@@ -259,6 +259,45 @@ main {
   margin-bottom: 12px;
 }
 
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 260px;
+}
+
+.filter-row select {
+  min-width: 130px;
+}
+
+.fan-panel {
+  margin-top: 16px;
+}
+
+.favorite-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.favorite-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  font-weight: 750;
+}
+
+.favorite-chip input {
+  width: 17px;
+  min-height: 17px;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -492,7 +531,7 @@ button:focus-visible {
 }
 
 .season-form {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
 }
 
 .match-form {
@@ -500,6 +539,26 @@ button:focus-visible {
     minmax(120px, 1fr) minmax(190px, 1.2fr) minmax(150px, 1fr) minmax(150px, 1fr)
     minmax(72px, 0.45fr) minmax(72px, 0.45fr) minmax(116px, 0.7fr) auto;
   margin-bottom: 12px;
+}
+
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 30;
+  width: min(420px, calc(100% - 32px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+  font-weight: 750;
 }
 
 .edit-grid {
@@ -623,6 +682,16 @@ button:focus-visible {
     justify-content: flex-start;
   }
 
+  .section-head,
+  .filter-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter-row {
+    width: 100%;
+  }
+
   .summary-band,
   .content-grid,
   .stats-grid,
@@ -672,6 +741,7 @@ button:focus-visible {
   }
 
   .top-actions,
+  .filter-row,
   .season-form,
   .inline-form,
   .edit-grid,

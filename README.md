@@ -79,9 +79,13 @@ Como no se va a usar Firebase Storage, los logos se guardan optimizados dentro d
 - El boton `Admin` abre el inicio de sesion.
 - Solo el administrador autenticado puede crear temporadas, editar nombre del torneo, equipos y partidos.
 - Cada equipo puede tener un logo propio en PNG, JPG o WEBP. La app lo optimiza antes de guardarlo.
+- Cada temporada puede definir un numero de jornadas y la vista publica permite filtrar los partidos por jornada.
 - Al guardar un partido, el administrador puede registrar goleadores, asistentes, tarjetas amarillas/rojas y MVP.
 - La vista publica calcula tablas de clasificacion, maximos goleadores, asistentes, tarjetas y MVPs por temporada.
+- Cada visitante puede marcar equipos favoritos en su navegador y activar notificaciones locales de resultados mientras la web/PWA este abierta.
 
 ## PWA y futuro Android
 
-La web incluye `manifest.webmanifest`, iconos instalables y `sw.js`. En navegadores compatibles se puede anadir a la pantalla de inicio y conservar una copia cacheada de la vista publica. Si despues quieres publicarla como app Android, el camino natural es envolver esta web con Capacitor y reutilizar la misma API.
+La web incluye `manifest.webmanifest`, iconos instalables y `sw.js`. En navegadores compatibles se puede anadir a la pantalla de inicio y conservar una copia cacheada de la vista publica. Cuando se despliega una nueva version, la PWA muestra un aviso para actualizar. Si despues quieres publicarla como app Android, el camino natural es envolver esta web con Capacitor y reutilizar la misma API.
+
+Las notificaciones actuales son locales: funcionan cuando la web o la PWA esta abierta y comprueba nuevos resultados. Para avisos con la app completamente cerrada haria falta implementar Web Push con suscripciones por dispositivo.

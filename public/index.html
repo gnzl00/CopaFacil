@@ -8,7 +8,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="stylesheet" href="/styles.css?v=10" />
+    <link rel="stylesheet" href="/styles.css?v=11" />
   </head>
   <body>
     <header class="app-header">
@@ -53,7 +53,7 @@
           <section class="panel standings-panel">
             <div class="section-head">
               <div>
-                <p class="eyebrow">Tabla</p>
+                <p class="eyebrow" id="phaseLabel">Tabla</p>
                 <h2>Clasificacion</h2>
               </div>
             </div>
@@ -79,18 +79,32 @@
             <div class="section-head">
               <div>
                 <p class="eyebrow">Calendario</p>
-                <h2>Partidos</h2>
+                <h2>Juegos</h2>
               </div>
-              <select id="matchFilter" aria-label="Filtrar partidos">
-                <option value="all">Todos</option>
-                <option value="scheduled">Pendientes</option>
-                <option value="live">En juego</option>
-                <option value="finished">Finalizados</option>
-              </select>
+              <div class="filter-row">
+                <select id="roundFilter" aria-label="Filtrar por jornada"></select>
+                <select id="matchFilter" aria-label="Filtrar partidos">
+                  <option value="all">Todos</option>
+                  <option value="scheduled">Pendientes</option>
+                  <option value="live">En juego</option>
+                  <option value="finished">Finalizados</option>
+                </select>
+              </div>
             </div>
             <div class="match-list" id="matchesList"></div>
           </section>
         </div>
+
+        <section class="panel fan-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Favoritos</p>
+              <h2>Mis equipos</h2>
+            </div>
+            <button class="small-button" id="notificationButton" type="button">Activar notificaciones</button>
+          </div>
+          <div class="favorite-list" id="favoriteTeamsList"></div>
+        </section>
 
         <div class="stats-grid">
           <section class="panel">
@@ -227,6 +241,7 @@
                 <input name="season" placeholder="2026-2027" maxlength="20" required />
                 <input name="name" placeholder="Nombre del torneo" maxlength="80" required />
                 <input name="subtitle" placeholder="Subtitulo" maxlength="120" />
+                <input name="roundCount" type="number" min="1" max="60" placeholder="Jornadas" required />
                 <button class="primary-button" type="submit">Crear temporada</button>
               </form>
               <button class="danger-button" id="deleteTournamentButton" type="button">
@@ -254,6 +269,10 @@
               <label>
                 Temporada
                 <input name="season" maxlength="20" required />
+              </label>
+              <label>
+                Jornadas
+                <input name="roundCount" type="number" min="1" max="60" required />
               </label>
               <button class="primary-button" type="submit">Guardar torneo</button>
             </form>
@@ -290,7 +309,7 @@
               </div>
             </div>
             <form id="matchForm" class="match-form">
-              <input name="round" placeholder="Jornada" maxlength="40" required />
+              <select name="round" required></select>
               <input name="date" type="datetime-local" required />
               <select name="homeTeamId" required></select>
               <select name="awayTeamId" required></select>
@@ -310,6 +329,10 @@
     </main>
 
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
-  <script src="/app.js?v=10" defer></script>
+    <div class="update-banner hidden" id="updateBanner" role="status">
+      <span>Nueva version disponible.</span>
+      <button class="small-button" id="reloadUpdateButton" type="button">Actualizar</button>
+    </div>
+    <script src="/app.js?v=11" defer></script>
   </body>
 </html>
