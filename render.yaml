@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: copa-facil
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATA_FILE
+        value: /var/data/copafacil.json
+    disk:
+      name: copa-facil-data
+      mountPath: /var/data
+      sizeGB: 1

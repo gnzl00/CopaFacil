@@ -1,0 +1,14 @@
+{
+  "name": "copa-facil",
+  "version": "1.0.0",
+  "description": "Web ligera para gestionar una copa con vista publica de resultados y panel de administrador.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

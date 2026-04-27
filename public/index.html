@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>Copa Facil</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <img class="brand-mark" src="/icon.svg" alt="" width="42" height="42" />
+        <div>
+          <p class="eyebrow" id="seasonLabel">Temporada</p>
+          <h1 id="tournamentName">Copa Facil</h1>
+          <p id="tournamentSubtitle">Resultados y clasificacion</p>
+        </div>
+      </div>
+      <nav class="top-actions" aria-label="Navegacion principal">
+        <button class="ghost-button" type="button" data-view="public">Resultados</button>
+        <button class="ghost-button" type="button" data-view="admin">Admin</button>
+        <button class="primary-button hidden" id="logoutButton" type="button">Salir</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="summary-band" aria-label="Resumen del torneo">
+        <div>
+          <span class="metric-value" id="metricTeams">0</span>
+          <span class="metric-label">Equipos</span>
+        </div>
+        <div>
+          <span class="metric-value" id="metricPlayed">0</span>
+          <span class="metric-label">Jugados</span>
+        </div>
+        <div>
+          <span class="metric-value" id="metricPending">0</span>
+          <span class="metric-label">Pendientes</span>
+        </div>
+        <div>
+          <span class="metric-value" id="metricUpdated">--</span>
+          <span class="metric-label">Actualizado</span>
+        </div>
+      </section>
+
+      <section class="view" id="publicView">
+        <div class="content-grid">
+          <section class="panel standings-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Tabla</p>
+                <h2>Clasificacion</h2>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Equipo</th>
+                    <th>PJ</th>
+                    <th>G</th>
+                    <th>E</th>
+                    <th>P</th>
+                    <th>DG</th>
+                    <th>Pts</th>
+                  </tr>
+                </thead>
+                <tbody id="standingsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Calendario</p>
+                <h2>Partidos</h2>
+              </div>
+              <select id="matchFilter" aria-label="Filtrar partidos">
+                <option value="all">Todos</option>
+                <option value="scheduled">Pendientes</option>
+                <option value="live">En juego</option>
+                <option value="finished">Finalizados</option>
+              </select>
+            </div>
+            <div class="match-list" id="matchesList"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view hidden" id="adminView">
+        <div class="login-panel" id="loginPanel">
+          <div>
+            <p class="eyebrow">Acceso privado</p>
+            <h2>Panel de administrador</h2>
+            <p class="muted">Los invitados no pueden crear, editar ni borrar contenido.</p>
+          </div>
+          <form id="loginForm" class="form-grid">
+            <label>
+              Usuario
+              <input name="username" autocomplete="username" required />
+            </label>
+            <label>
+              Contrasena
+              <input name="password" type="password" autocomplete="current-password" required />
+            </label>
+            <button class="primary-button" type="submit">Entrar</button>
+          </form>
+        </div>
+
+        <div class="admin-grid hidden" id="adminPanel">
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Configuracion</p>
+                <h2>Torneo</h2>
+              </div>
+            </div>
+            <form id="settingsForm" class="form-grid">
+              <label>
+                Nombre
+                <input name="name" maxlength="80" required />
+              </label>
+              <label>
+                Subtitulo
+                <input name="subtitle" maxlength="120" required />
+              </label>
+              <label>
+                Temporada
+                <input name="season" maxlength="20" required />
+              </label>
+              <button class="primary-button" type="submit">Guardar torneo</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Plantilla</p>
+                <h2>Equipos</h2>
+              </div>
+            </div>
+            <form id="teamForm" class="inline-form">
+              <input name="name" placeholder="Nombre del equipo" maxlength="60" required />
+              <input name="shortName" placeholder="Siglas" maxlength="8" />
+              <input name="color" type="color" value="#2563eb" aria-label="Color" />
+              <button class="primary-button" type="submit">Anadir</button>
+            </form>
+            <div class="admin-list" id="teamsAdminList"></div>
+          </section>
+
+          <section class="panel wide-panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Marcadores</p>
+                <h2>Partidos</h2>
+              </div>
+            </div>
+            <form id="matchForm" class="match-form">
+              <input name="round" placeholder="Jornada" maxlength="40" required />
+              <input name="date" type="datetime-local" required />
+              <select name="homeTeamId" required></select>
+              <select name="awayTeamId" required></select>
+              <input name="homeScore" type="number" min="0" max="99" placeholder="Local" />
+              <input name="awayScore" type="number" min="0" max="99" placeholder="Visitante" />
+              <select name="status">
+                <option value="scheduled">Pendiente</option>
+                <option value="live">En juego</option>
+                <option value="finished">Finalizado</option>
+              </select>
+              <button class="primary-button" type="submit">Crear partido</button>
+            </form>
+            <div class="admin-list" id="matchesAdminList"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
