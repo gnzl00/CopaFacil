@@ -7,7 +7,7 @@
     <title>Copa Facil</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=5" />
+    <link rel="stylesheet" href="/styles.css?v=7" />
   </head>
   <body>
     <header class="app-header">
@@ -210,7 +210,7 @@
         </div>
 
         <div class="admin-grid hidden" id="adminPanel">
-          <section class="panel">
+          <section class="panel admin-season-panel">
             <div class="section-head">
               <div>
                 <p class="eyebrow">Temporadas</p>
@@ -234,7 +234,7 @@
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel admin-settings-panel">
             <div class="section-head">
               <div>
                 <p class="eyebrow">Configuracion</p>
@@ -258,7 +258,7 @@
             </form>
           </section>
 
-          <section class="panel">
+          <section class="panel admin-backup-panel">
             <div class="section-head">
               <div>
                 <p class="eyebrow">Respaldo</p>
@@ -283,7 +283,7 @@
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel admin-teams-panel">
             <div class="section-head">
               <div>
                 <p class="eyebrow">Plantilla</p>
@@ -299,7 +299,7 @@
             <div class="admin-list" id="teamsAdminList"></div>
           </section>
 
-          <section class="panel wide-panel">
+          <section class="panel wide-panel admin-matches-panel">
             <div class="section-head">
               <div>
                 <p class="eyebrow">Marcadores</p>
@@ -327,6 +327,6 @@
     </main>
 
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=5" defer></script>
+    <script src="/app.js?v=7" defer></script>
   </body>
 </html>
