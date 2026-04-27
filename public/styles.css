@@ -359,6 +359,16 @@ input[type="color"] {
   padding: 3px;
 }
 
+.password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.password-toggle {
+  min-width: 92px;
+}
+
 input:focus,
 select:focus,
 button:focus-visible {
@@ -449,6 +459,7 @@ button:focus-visible {
   }
 
   .top-actions,
+  .password-field,
   .inline-form,
   .edit-grid,
   .match-form,

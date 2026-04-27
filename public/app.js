@@ -20,6 +20,8 @@ const els = {
   loginPanel: document.querySelector("#loginPanel"),
   adminPanel: document.querySelector("#adminPanel"),
   loginForm: document.querySelector("#loginForm"),
+  adminPassword: document.querySelector("#adminPassword"),
+  togglePasswordButton: document.querySelector("#togglePasswordButton"),
   logoutButton: document.querySelector("#logoutButton"),
   settingsForm: document.querySelector("#settingsForm"),
   teamForm: document.querySelector("#teamForm"),
@@ -172,7 +174,7 @@ function renderMatches() {
         return `
           <article class="match-card">
             <div class="match-meta">
-              <span>${escapeHtml(match.round)} · ${formatDate(match.date)}</span>
+              <span>${escapeHtml(match.round)} - ${formatDate(match.date)}</span>
               <span class="status ${escapeHtml(match.status)}">${statusLabels[match.status]}</span>
             </div>
             <div class="match-teams">
@@ -276,6 +278,16 @@ document.querySelectorAll("[data-view]").forEach((button) => {
 });
 
 els.matchFilter.addEventListener("change", renderMatches);
+
+els.togglePasswordButton.addEventListener("click", () => {
+  const isHidden = els.adminPassword.type === "password";
+  els.adminPassword.type = isHidden ? "text" : "password";
+  els.togglePasswordButton.textContent = isHidden ? "Ocultar" : "Mostrar";
+  els.togglePasswordButton.setAttribute(
+    "aria-label",
+    isHidden ? "Ocultar contrasena" : "Mostrar contrasena"
+  );
+});
 
 els.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();

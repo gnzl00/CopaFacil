@@ -105,7 +105,24 @@
             </label>
             <label>
               Contrasena
-              <input name="password" type="password" autocomplete="current-password" required />
+              <span class="password-field">
+                <input
+                  id="adminPassword"
+                  name="password"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                />
+                <button
+                  class="small-button password-toggle"
+                  id="togglePasswordButton"
+                  type="button"
+                  aria-controls="adminPassword"
+                  aria-label="Mostrar contrasena"
+                >
+                  Mostrar
+                </button>
+              </span>
             </label>
             <button class="primary-button" type="submit">Entrar</button>
           </form>
