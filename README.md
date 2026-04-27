@@ -42,6 +42,7 @@ Despues de cada despliegue, si el navegador muestra una version antigua, haz una
 - Todos los visitantes entran como invitados y solo pueden ver calendario, resultados y clasificacion.
 - El boton `Admin` abre el inicio de sesion.
 - Solo el administrador autenticado puede editar nombre del torneo, equipos y partidos.
+- Desde el panel de administrador puedes exportar un JSON con torneo, equipos y partidos, e importarlo despues para restaurar esos datos.
 
 ## Futuro Android
 

@@ -14,6 +14,7 @@ const CONFIGURED_DATA_FILE = process.env.DATA_FILE || DEFAULT_DATA_FILE;
 let dataFile = CONFIGURED_DATA_FILE;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
+const MAX_BODY_BYTES = 2_000_000;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -146,7 +147,7 @@ function readRequestJson(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 100_000) {
+      if (body.length > MAX_BODY_BYTES) {
         reject(new Error("El cuerpo de la peticion es demasiado grande."));
         req.destroy();
       }
@@ -256,6 +257,17 @@ function publicPayload(data) {
     teams: data.teams,
     matches: data.matches,
     standings: buildStandings(data),
+    updatedAt: data.updatedAt
+  };
+}
+
+function exportPayload(data) {
+  return {
+    exportVersion: 1,
+    exportedAt: new Date().toISOString(),
+    tournament: data.tournament,
+    teams: data.teams,
+    matches: data.matches,
     updatedAt: data.updatedAt
   };
 }
@@ -393,6 +405,89 @@ function normalizeMatch(input, data, existingId) {
   };
 }
 
+function normalizeImportedId(value, prefix) {
+  const id = String(value || "").trim();
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) {
+    return makeId(prefix);
+  }
+  return id;
+}
+
+function normalizeImportedData(input) {
+  const source = input && input.data ? input.data : input;
+  if (!source || typeof source !== "object") {
+    throw new Error("El fichero JSON no tiene un formato valido.");
+  }
+  if (!Array.isArray(source.teams) || !Array.isArray(source.matches)) {
+    throw new Error("El JSON debe incluir equipos y partidos.");
+  }
+
+  const tournamentSource = source.tournament || {};
+  const tournament = {
+    name: normalizeText(tournamentSource.name, "Copa Facil", 80),
+    subtitle: normalizeText(
+      tournamentSource.subtitle,
+      "Resultados, calendario y clasificacion en tiempo real",
+      120
+    ),
+    season: normalizeText(tournamentSource.season, String(new Date().getFullYear()), 20)
+  };
+
+  const seenTeams = new Set();
+  const teams = source.teams.map((team) => {
+    let id = normalizeImportedId(team.id, "team");
+    while (seenTeams.has(id)) {
+      id = makeId("team");
+    }
+    seenTeams.add(id);
+    return {
+      id,
+      name: normalizeText(team.name, "Equipo", 60),
+      shortName: normalizeText(team.shortName, String(team.name || "EQ").slice(0, 3), 8).toUpperCase(),
+      color: normalizeColor(team.color)
+    };
+  });
+
+  const teamIds = new Set(teams.map((team) => team.id));
+  const seenMatches = new Set();
+  const matches = [];
+  for (const match of source.matches) {
+    const homeTeamId = String(match.homeTeamId || "");
+    const awayTeamId = String(match.awayTeamId || "");
+    if (!teamIds.has(homeTeamId) || !teamIds.has(awayTeamId) || homeTeamId === awayTeamId) {
+      continue;
+    }
+
+    let id = normalizeImportedId(match.id, "match");
+    while (seenMatches.has(id)) {
+      id = makeId("match");
+    }
+    seenMatches.add(id);
+
+    const status = normalizeStatus(match.status);
+    const homeScore = normalizeScore(match.homeScore);
+    const awayScore = normalizeScore(match.awayScore);
+    const date = new Date(match.date);
+    matches.push({
+      id,
+      round: normalizeText(match.round, "Jornada", 40),
+      date: Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(),
+      homeTeamId,
+      awayTeamId,
+      homeScore: status === "scheduled" ? null : homeScore,
+      awayScore: status === "scheduled" ? null : awayScore,
+      status
+    });
+  }
+
+  return {
+    tournament,
+    teams,
+    matches,
+    updatedAt: new Date().toISOString()
+  };
+}
+
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/public") {
     sendJson(res, 200, publicPayload(readData()));
@@ -435,6 +530,20 @@ async function handleApi(req, res, url) {
 
   const data = readData();
   const body = ["POST", "PUT", "PATCH"].includes(req.method) ? await readRequestJson(req) : {};
+
+  if (req.method === "GET" && url.pathname === "/api/admin/export") {
+    sendJson(res, 200, exportPayload(data));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/admin/import") {
+    try {
+      sendJson(res, 200, publicPayload(writeData(normalizeImportedData(body))));
+    } catch (error) {
+      sendError(res, 400, error.message);
+    }
+    return;
+  }
 
   if (req.method === "PUT" && url.pathname === "/api/admin/settings") {
     data.tournament = {

@@ -21,9 +21,13 @@ const els = {
   adminPanel: document.querySelector("#adminPanel"),
   loginForm: document.querySelector("#loginForm"),
   adminPassword: document.querySelector("#adminPassword"),
-  togglePasswordButton: document.querySelector("#togglePasswordButton"),
+  showPasswordCheckbox: document.querySelector("#showPasswordCheckbox"),
   logoutButton: document.querySelector("#logoutButton"),
   settingsForm: document.querySelector("#settingsForm"),
+  exportDataButton: document.querySelector("#exportDataButton"),
+  importDataInput: document.querySelector("#importDataInput"),
+  importDataButton: document.querySelector("#importDataButton"),
+  importFileName: document.querySelector("#importFileName"),
   teamForm: document.querySelector("#teamForm"),
   teamsAdminList: document.querySelector("#teamsAdminList"),
   matchForm: document.querySelector("#matchForm"),
@@ -273,20 +277,35 @@ async function saveAndRefresh(path, options, successMessage) {
   showToast(successMessage);
 }
 
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("No se pudo leer el fichero."));
+    reader.readAsText(file);
+  });
+}
+
 document.querySelectorAll("[data-view]").forEach((button) => {
   button.addEventListener("click", () => setView(button.dataset.view));
 });
 
 els.matchFilter.addEventListener("change", renderMatches);
 
-els.togglePasswordButton.addEventListener("click", () => {
-  const isHidden = els.adminPassword.type === "password";
-  els.adminPassword.type = isHidden ? "text" : "password";
-  els.togglePasswordButton.textContent = isHidden ? "Ocultar" : "Mostrar";
-  els.togglePasswordButton.setAttribute(
-    "aria-label",
-    isHidden ? "Ocultar contrasena" : "Mostrar contrasena"
-  );
+els.showPasswordCheckbox.addEventListener("change", () => {
+  els.adminPassword.type = els.showPasswordCheckbox.checked ? "text" : "password";
 });
 
 els.loginForm.addEventListener("submit", async (event) => {
@@ -320,6 +339,47 @@ els.settingsForm.addEventListener("submit", async (event) => {
     { method: "PUT", body: JSON.stringify(formPayload(event.currentTarget)) },
     "Torneo actualizado."
   );
+});
+
+els.exportDataButton.addEventListener("click", async () => {
+  try {
+    const payload = await api("/api/admin/export");
+    const date = new Date().toISOString().slice(0, 10);
+    downloadJson(`copa-facil-${date}.json`, payload);
+    showToast("Datos exportados.");
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+els.importDataInput.addEventListener("change", () => {
+  const file = els.importDataInput.files[0];
+  els.importDataButton.disabled = !file;
+  els.importFileName.textContent = file ? file.name : "Ningun fichero seleccionado";
+});
+
+els.importDataButton.addEventListener("click", async () => {
+  const file = els.importDataInput.files[0];
+  if (!file) return;
+
+  try {
+    const content = await readFileAsText(file);
+    const payload = JSON.parse(content);
+    if (!window.confirm("Importar este JSON sustituira los datos actuales.")) {
+      return;
+    }
+    state.data = await api("/api/admin/import", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    els.importDataInput.value = "";
+    els.importDataButton.disabled = true;
+    els.importFileName.textContent = "Ningun fichero seleccionado";
+    render();
+    showToast("Datos importados.");
+  } catch (error) {
+    showToast(error.message || "El fichero JSON no es valido.");
+  }
 });
 
 els.teamForm.addEventListener("submit", async (event) => {
@@ -401,8 +461,17 @@ els.matchesAdminList.addEventListener("click", async (event) => {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
-      .then((registration) => registration.update())
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .catch(() => {});
+  });
+}
+
+if ("caches" in window) {
+  window.addEventListener("load", () => {
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
       .catch(() => {});
   });
 }

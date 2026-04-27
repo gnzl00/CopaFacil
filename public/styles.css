@@ -35,6 +35,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -359,21 +364,59 @@ input[type="color"] {
   padding: 3px;
 }
 
-.password-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-}
-
-.password-toggle {
-  min-width: 92px;
-}
-
 input:focus,
 select:focus,
 button:focus-visible {
   outline: 3px solid rgba(15, 118, 110, 0.2);
   outline-offset: 2px;
+}
+
+.check-row {
+  display: flex !important;
+  align-items: center;
+  gap: 10px !important;
+  color: var(--ink) !important;
+}
+
+.check-row input {
+  width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+}
+
+.backup-actions {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(140px, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.file-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selected-file {
+  color: var(--muted);
+  font-size: 0.88rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .inline-form {
@@ -459,7 +502,7 @@ button:focus-visible {
   }
 
   .top-actions,
-  .password-field,
+  .backup-actions,
   .inline-form,
   .edit-grid,
   .match-form,

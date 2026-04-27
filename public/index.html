@@ -7,7 +7,7 @@
     <title>Copa Facil</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=3" />
+    <link rel="stylesheet" href="/styles.css?v=4" />
   </head>
   <body>
     <header class="app-header">
@@ -105,24 +105,17 @@
             </label>
             <label>
               Contrasena
-              <span class="password-field">
-                <input
-                  id="adminPassword"
-                  name="password"
-                  type="password"
-                  autocomplete="current-password"
-                  required
-                />
-                <button
-                  class="small-button password-toggle"
-                  id="togglePasswordButton"
-                  type="button"
-                  aria-controls="adminPassword"
-                  aria-label="Mostrar contrasena"
-                >
-                  Mostrar
-                </button>
-              </span>
+              <input
+                id="adminPassword"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
+            </label>
+            <label class="check-row">
+              <input id="showPasswordCheckbox" type="checkbox" />
+              Mostrar contrasena
             </label>
             <button class="primary-button" type="submit">Entrar</button>
           </form>
@@ -151,6 +144,31 @@
               </label>
               <button class="primary-button" type="submit">Guardar torneo</button>
             </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Respaldo</p>
+                <h2>Datos</h2>
+              </div>
+            </div>
+            <div class="backup-actions">
+              <button class="primary-button" id="exportDataButton" type="button">
+                Exportar JSON
+              </button>
+              <label class="small-button file-picker" for="importDataInput">Elegir JSON</label>
+              <input
+                class="visually-hidden"
+                id="importDataInput"
+                type="file"
+                accept=".json,application/json"
+              />
+              <button class="small-button" id="importDataButton" type="button" disabled>
+                Importar JSON
+              </button>
+              <span class="selected-file" id="importFileName">Ningun fichero seleccionado</span>
+            </div>
           </section>
 
           <section class="panel">
@@ -197,6 +215,6 @@
     </main>
 
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=3" defer></script>
+    <script src="/app.js?v=4" defer></script>
   </body>
 </html>
