@@ -13,9 +13,15 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
-      - key: DATA_FILE
-        value: /var/data/copafacil.json
-    disk:
-      name: copa-facil-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: DATA_STORE
+        value: firestore
+      - key: FIREBASE_PROJECT_ID
+        value: copafacil-89df8
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIRESTORE_COLLECTION
+        value: copaFacil
+      - key: FIRESTORE_DOCUMENT
+        value: production

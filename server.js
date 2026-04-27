@@ -3,18 +3,18 @@ const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
 const { URL } = require("node:url");
+const { createStore } = require("./storage");
 
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
-const DEFAULT_DATA_FILE = path.join(__dirname, "data", "copafacil.json");
-const CONFIGURED_DATA_FILE = process.env.DATA_FILE || DEFAULT_DATA_FILE;
-let dataFile = CONFIGURED_DATA_FILE;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
 const MAX_BODY_BYTES = 8_000_000;
+const MAX_LOGO_DATA_URL_LENGTH = 70_000;
+let store;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -88,72 +88,6 @@ function defaultData() {
     tournaments: [tournament],
     updatedAt: new Date().toISOString()
   };
-}
-
-function isPermissionError(error) {
-  return ["EACCES", "EPERM", "EROFS"].includes(error && error.code);
-}
-
-function assertWritableDataPath(filePath) {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  const probeFile = path.join(dir, `.write-test-${process.pid}`);
-  fs.writeFileSync(probeFile, "ok", "utf8");
-  fs.unlinkSync(probeFile);
-}
-
-function selectDataFile() {
-  try {
-    assertWritableDataPath(CONFIGURED_DATA_FILE);
-    dataFile = CONFIGURED_DATA_FILE;
-    return;
-  } catch (error) {
-    if (CONFIGURED_DATA_FILE === DEFAULT_DATA_FILE || !isPermissionError(error)) {
-      throw error;
-    }
-    console.warn(
-      `No se puede escribir en DATA_FILE=${CONFIGURED_DATA_FILE}. ` +
-        `Usando almacenamiento temporal en ${DEFAULT_DATA_FILE}. ` +
-        "En Render, monta un Persistent Disk en /var/data para conservar datos."
-    );
-  }
-
-  assertWritableDataPath(DEFAULT_DATA_FILE);
-  dataFile = DEFAULT_DATA_FILE;
-}
-
-function ensureDataFile() {
-  const dir = path.dirname(dataFile);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  if (!fs.existsSync(dataFile)) {
-    writeData(defaultData());
-  }
-}
-
-function readData() {
-  ensureDataFile();
-  const raw = fs.readFileSync(dataFile, "utf8");
-  const normalized = normalizeData(JSON.parse(raw));
-  if (normalized.changed) {
-    writeData(normalized.data);
-  }
-  return normalized.data;
-}
-
-function writeData(data) {
-  const dir = path.dirname(dataFile);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  const nextData = { ...data, schemaVersion: 2, updatedAt: new Date().toISOString() };
-  const tempFile = `${dataFile}.${process.pid}.tmp`;
-  fs.writeFileSync(tempFile, `${JSON.stringify(nextData, null, 2)}\n`, "utf8");
-  fs.renameSync(tempFile, dataFile);
-  return nextData;
 }
 
 function sendJson(res, status, payload) {
@@ -313,7 +247,7 @@ function normalizeLogoDataUrl(value) {
   if (!logo) {
     return "";
   }
-  if (logo.length > 1_500_000) {
+  if (logo.length > MAX_LOGO_DATA_URL_LENGTH) {
     return "";
   }
   return /^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(logo) ? logo : "";
@@ -680,7 +614,7 @@ function buildStats(tournament) {
 
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/public") {
-    sendJson(res, 200, publicPayload(readData(), url.searchParams.get("tournamentId")));
+    sendJson(res, 200, publicPayload(await store.read(), url.searchParams.get("tournamentId")));
     return;
   }
 
@@ -718,7 +652,7 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  const data = readData();
+  const data = await store.read();
   const body = ["POST", "PUT", "PATCH"].includes(req.method) ? await readRequestJson(req) : {};
 
   if (req.method === "GET" && url.pathname === "/api/admin/export") {
@@ -729,7 +663,7 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/admin/import") {
     try {
       const normalized = normalizeData(body).data;
-      sendJson(res, 200, publicPayload(writeData(normalized), normalized.activeTournamentId));
+      sendJson(res, 200, publicPayload(await store.write(normalized), normalized.activeTournamentId));
     } catch (error) {
       sendError(res, 400, error.message);
     }
@@ -749,7 +683,7 @@ async function handleApi(req, res, url) {
     }
     data.tournaments.push(tournament);
     data.activeTournamentId = tournament.id;
-    sendJson(res, 201, publicPayload(writeData(data), tournament.id));
+    sendJson(res, 201, publicPayload(await store.write(data), tournament.id));
     return;
   }
 
@@ -775,7 +709,7 @@ async function handleApi(req, res, url) {
     }
     data.tournaments.splice(tournamentIndex, 1);
     data.activeTournamentId = data.tournaments[0].id;
-    sendJson(res, 200, publicPayload(writeData(data), data.activeTournamentId));
+    sendJson(res, 200, publicPayload(await store.write(data), data.activeTournamentId));
     return;
   }
 
@@ -787,13 +721,13 @@ async function handleApi(req, res, url) {
       season: normalizeText(body.season, tournament.season, 20)
     };
     data.activeTournamentId = tournament.id;
-    sendJson(res, 200, publicPayload(writeData(data), tournament.id));
+    sendJson(res, 200, publicPayload(await store.write(data), tournament.id));
     return;
   }
 
   if (req.method === "POST" && rest === "teams") {
     tournament.teams.push(normalizeTeam(body));
-    sendJson(res, 201, publicPayload(writeData(data), tournament.id));
+    sendJson(res, 201, publicPayload(await store.write(data), tournament.id));
     return;
   }
 
@@ -807,7 +741,7 @@ async function handleApi(req, res, url) {
     }
     if (req.method === "PUT") {
       tournament.teams[index] = normalizeTeam(body, teamId);
-      sendJson(res, 200, publicPayload(writeData(data), tournament.id));
+      sendJson(res, 200, publicPayload(await store.write(data), tournament.id));
       return;
     }
     if (req.method === "DELETE") {
@@ -819,7 +753,7 @@ async function handleApi(req, res, url) {
         return;
       }
       tournament.teams.splice(index, 1);
-      sendJson(res, 200, publicPayload(writeData(data), tournament.id));
+      sendJson(res, 200, publicPayload(await store.write(data), tournament.id));
       return;
     }
   }
@@ -827,7 +761,7 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && rest === "matches") {
     try {
       tournament.matches.push(normalizeMatch(body, tournament));
-      sendJson(res, 201, publicPayload(writeData(data), tournament.id));
+      sendJson(res, 201, publicPayload(await store.write(data), tournament.id));
     } catch (error) {
       sendError(res, 400, error.message);
     }
@@ -845,7 +779,7 @@ async function handleApi(req, res, url) {
     if (req.method === "PUT") {
       try {
         tournament.matches[index] = normalizeMatch(body, tournament, matchId);
-        sendJson(res, 200, publicPayload(writeData(data), tournament.id));
+        sendJson(res, 200, publicPayload(await store.write(data), tournament.id));
       } catch (error) {
         sendError(res, 400, error.message);
       }
@@ -853,7 +787,7 @@ async function handleApi(req, res, url) {
     }
     if (req.method === "DELETE") {
       tournament.matches.splice(index, 1);
-      sendJson(res, 200, publicPayload(writeData(data), tournament.id));
+      sendJson(res, 200, publicPayload(await store.write(data), tournament.id));
       return;
     }
   }
@@ -901,13 +835,20 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-selectDataFile();
-ensureDataFile();
+async function main() {
+  store = createStore({ defaultData, normalizeData });
+  await store.init();
 
-server.listen(PORT, () => {
-  if (!process.env.ADMIN_PASSWORD) {
-    console.warn("ADMIN_PASSWORD no esta definido. Usando contrasena local: admin123");
-  }
-  console.log(`Datos guardados en ${dataFile}`);
-  console.log(`Copa Facil disponible en http://localhost:${PORT}`);
+  server.listen(PORT, () => {
+    if (!process.env.ADMIN_PASSWORD) {
+      console.warn("ADMIN_PASSWORD no esta definido. Usando contrasena local: admin123");
+    }
+    console.log(`Almacenamiento: ${store.describe()}`);
+    console.log(`Copa Facil disponible en http://localhost:${PORT}`);
+  });
+}
+
+main().catch((error) => {
+  console.error(error.message || error);
+  process.exit(1);
 });

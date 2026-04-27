@@ -25,17 +25,52 @@ SESSION_SECRET=un-secreto-largo
 
 ## Despliegue en Render
 
-El archivo `render.yaml` deja preparado un Web Service de Node. Para que los datos no se pierdan entre reinicios, usa un disco persistente montado en `/var/data` y deja:
+El archivo `render.yaml` deja preparado un Web Service de Node conectado a Firestore. En este modo no hace falta Persistent Disk ni `DATA_FILE`.
 
-```bash
-DATA_FILE=/var/data/copafacil.json
-```
+Si creas el servicio manualmente, configura las variables de Firestore de la seccion `Almacenamiento`. Para volver al modo de pruebas local con JSON, usa `DATA_STORE=json`.
 
-Si creas el servicio manualmente y no has anadido un Persistent Disk en `/var/data`, no configures `DATA_FILE=/var/data/copafacil.json`. La app usara `data/copafacil.json` como almacenamiento temporal. Funcionara, pero Render puede perder los datos al recrear la instancia.
-
-Si ves `EACCES: permission denied, mkdir '/var/data'`, significa que `DATA_FILE` apunta a `/var/data`, pero Render no tiene un disco persistente montado ahi o no puede escribir en esa ruta.
+Si ves `EACCES: permission denied, mkdir '/var/data'`, elimina `DATA_FILE` de las variables de entorno de Render o cambia `DATA_STORE` a `json` solo para pruebas.
 
 Despues de cada despliegue, si el navegador muestra una version antigua, haz una recarga fuerte. La app actualiza el service worker para evitar que HTML, CSS y JS queden obsoletos.
+
+## Almacenamiento
+
+Por defecto la app usa JSON local. Esto permite desarrollar y probar sin crear ningun servicio externo:
+
+```bash
+DATA_STORE=json
+DATA_FILE=./data/copafacil.json
+```
+
+Tambien queda preparada para Firestore. En ese modo no hace falta `DATA_FILE` ni disco persistente en Render:
+
+```bash
+DATA_STORE=firestore
+FIREBASE_PROJECT_ID=tu-proyecto
+FIREBASE_CLIENT_EMAIL=cuenta-servicio@tu-proyecto.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIRESTORE_COLLECTION=copaFacil
+FIRESTORE_DOCUMENT=production
+```
+
+Como alternativa, en vez de separar las credenciales puedes pasar el JSON completo de la cuenta de servicio en una de estas variables:
+
+```bash
+FIREBASE_SERVICE_ACCOUNT_JSON={...}
+FIREBASE_SERVICE_ACCOUNT_BASE64=...
+```
+
+Para hacer la adaptacion final a Firestore necesito:
+
+- ID del proyecto Firebase.
+- Credenciales de una cuenta de servicio con permiso para leer y escribir Firestore.
+- Nombre de la coleccion y documento que quieres usar, si no quieres los valores por defecto `copaFacil/production`.
+- No guardes estas credenciales en el repositorio. Configuralas solo como variables de entorno en Render.
+- Si una clave privada se comparte por error, borra esa clave y genera una nueva desde Firebase.
+
+### Firestore sin Storage
+
+Como no se va a usar Firebase Storage, los logos se guardan optimizados dentro de Firestore junto al equipo. La app limita cada logo a unos 70 KB y lo convierte a WEBP antes de enviarlo al servidor. Esto es suficiente para escudos pequenos, pero conviene mantener imagenes simples para no acercarse al limite de tamano de documento de Firestore.
 
 ## Modelo de uso
 

@@ -55,6 +55,10 @@ const cardLabels = {
   red: "Roja"
 };
 
+const MAX_LOGO_SOURCE_BYTES = 2_000_000;
+const MAX_LOGO_DATA_URL_LENGTH = 70_000;
+const LOGO_CANVAS_SIZE = 192;
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -464,36 +468,42 @@ function imageFileToDataUrl(file) {
       reject(new Error("El logo debe ser PNG, JPG o WEBP."));
       return;
     }
-    if (file.size > 3_000_000) {
-      reject(new Error("El logo no puede superar 3 MB."));
+    if (file.size > MAX_LOGO_SOURCE_BYTES) {
+      reject(new Error("El logo no puede superar 2 MB."));
       return;
     }
 
     const image = new Image();
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("No se pudo leer el logo."));
-    reader.onload = () => {
-      image.onerror = () => reject(new Error("No se pudo procesar el logo."));
-      image.onload = () => {
-        const size = 256;
-        const canvas = document.createElement("canvas");
-        canvas.width = size;
-        canvas.height = size;
-        const context = canvas.getContext("2d");
-        context.clearRect(0, 0, size, size);
-
-        const scale = Math.min(size / image.width, size / image.height);
-        const width = image.width * scale;
-        const height = image.height * scale;
-        const x = (size - width) / 2;
-        const y = (size - height) / 2;
-        context.drawImage(image, x, y, width, height);
-        URL.revokeObjectURL(image.src);
-        resolve(canvas.toDataURL("image/webp", 0.86));
-      };
-      image.src = URL.createObjectURL(file);
+    image.onerror = () => {
+      URL.revokeObjectURL(image.src);
+      reject(new Error("No se pudo procesar el logo."));
     };
-    reader.readAsArrayBuffer(file);
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = LOGO_CANVAS_SIZE;
+      canvas.height = LOGO_CANVAS_SIZE;
+      const context = canvas.getContext("2d");
+      context.clearRect(0, 0, LOGO_CANVAS_SIZE, LOGO_CANVAS_SIZE);
+
+      const scale = Math.min(LOGO_CANVAS_SIZE / image.width, LOGO_CANVAS_SIZE / image.height);
+      const width = image.width * scale;
+      const height = image.height * scale;
+      const x = (LOGO_CANVAS_SIZE - width) / 2;
+      const y = (LOGO_CANVAS_SIZE - height) / 2;
+      context.drawImage(image, x, y, width, height);
+      URL.revokeObjectURL(image.src);
+
+      const qualities = [0.82, 0.72, 0.62, 0.52, 0.42];
+      const dataUrl = qualities.map((quality) => canvas.toDataURL("image/webp", quality)).find((item) => {
+        return item.length <= MAX_LOGO_DATA_URL_LENGTH;
+      });
+      if (!dataUrl) {
+        reject(new Error("El logo es demasiado pesado. Usa una imagen mas simple o con menos detalle."));
+        return;
+      }
+      resolve(dataUrl);
+    };
+    image.src = URL.createObjectURL(file);
   });
 }
 
