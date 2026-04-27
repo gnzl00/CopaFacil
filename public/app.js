@@ -1,13 +1,15 @@
 const state = {
   data: null,
   authenticated: false,
-  view: "public"
+  view: "public",
+  selectedTournamentId: null
 };
 
 const els = {
   seasonLabel: document.querySelector("#seasonLabel"),
   tournamentName: document.querySelector("#tournamentName"),
   tournamentSubtitle: document.querySelector("#tournamentSubtitle"),
+  tournamentSelect: document.querySelector("#tournamentSelect"),
   metricTeams: document.querySelector("#metricTeams"),
   metricPlayed: document.querySelector("#metricPlayed"),
   metricPending: document.querySelector("#metricPending"),
@@ -15,6 +17,10 @@ const els = {
   standingsBody: document.querySelector("#standingsBody"),
   matchesList: document.querySelector("#matchesList"),
   matchFilter: document.querySelector("#matchFilter"),
+  goalsStatsBody: document.querySelector("#goalsStatsBody"),
+  assistsStatsBody: document.querySelector("#assistsStatsBody"),
+  cardsStatsBody: document.querySelector("#cardsStatsBody"),
+  mvpsStatsBody: document.querySelector("#mvpsStatsBody"),
   publicView: document.querySelector("#publicView"),
   adminView: document.querySelector("#adminView"),
   loginPanel: document.querySelector("#loginPanel"),
@@ -23,6 +29,9 @@ const els = {
   adminPassword: document.querySelector("#adminPassword"),
   showPasswordCheckbox: document.querySelector("#showPasswordCheckbox"),
   logoutButton: document.querySelector("#logoutButton"),
+  adminTournamentSelect: document.querySelector("#adminTournamentSelect"),
+  tournamentForm: document.querySelector("#tournamentForm"),
+  deleteTournamentButton: document.querySelector("#deleteTournamentButton"),
   settingsForm: document.querySelector("#settingsForm"),
   exportDataButton: document.querySelector("#exportDataButton"),
   importDataInput: document.querySelector("#importDataInput"),
@@ -39,6 +48,11 @@ const statusLabels = {
   scheduled: "Pendiente",
   live: "En juego",
   finished: "Finalizado"
+};
+
+const cardLabels = {
+  yellow: "Amarilla",
+  red: "Roja"
 };
 
 function escapeHtml(value) {
@@ -72,6 +86,14 @@ function toDatetimeLocal(value) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
+function currentTournamentId() {
+  return state.selectedTournamentId || state.data?.selectedTournamentId || "";
+}
+
+function adminBasePath() {
+  return `/api/admin/tournaments/${encodeURIComponent(currentTournamentId())}`;
+}
+
 function findTeam(id) {
   return state.data.teams.find((team) => team.id === id) || {
     id,
@@ -79,6 +101,17 @@ function findTeam(id) {
     shortName: "---",
     color: "#64748b"
   };
+}
+
+function teamOptions(selectedId = "") {
+  return state.data.teams
+    .map(
+      (team) =>
+        `<option value="${escapeHtml(team.id)}" ${
+          team.id === selectedId ? "selected" : ""
+        }>${escapeHtml(team.name)}</option>`
+    )
+    .join("");
 }
 
 function showToast(message) {
@@ -100,9 +133,11 @@ async function api(path, options = {}) {
   return payload;
 }
 
-async function loadData() {
-  const [data, session] = await Promise.all([api("/api/public"), api("/api/admin/session")]);
+async function loadData(tournamentId = state.selectedTournamentId) {
+  const query = tournamentId ? `?tournamentId=${encodeURIComponent(tournamentId)}` : "";
+  const [data, session] = await Promise.all([api(`/api/public${query}`), api("/api/admin/session")]);
   state.data = data;
+  state.selectedTournamentId = data.selectedTournamentId;
   state.authenticated = Boolean(session.authenticated);
   render();
 }
@@ -116,6 +151,19 @@ function setView(view) {
     .forEach((button) => button.classList.toggle("primary-button", button.dataset.view === view));
 }
 
+function renderTournamentSelectors() {
+  const options = state.data.tournaments
+    .map(
+      (item) =>
+        `<option value="${escapeHtml(item.id)}" ${
+          item.id === state.selectedTournamentId ? "selected" : ""
+        }>${escapeHtml(item.season)} - ${escapeHtml(item.name)}</option>`
+    )
+    .join("");
+  els.tournamentSelect.innerHTML = options;
+  els.adminTournamentSelect.innerHTML = options;
+}
+
 function render() {
   if (!state.data) return;
   const { tournament, teams, matches, standings, updatedAt } = state.data;
@@ -127,8 +175,10 @@ function render() {
   els.metricPending.textContent = matches.filter((match) => match.status !== "finished").length;
   els.metricUpdated.textContent = formatShortDate(updatedAt);
 
+  renderTournamentSelectors();
   renderStandings(standings);
   renderMatches();
+  renderStats();
   renderAdmin();
   els.logoutButton.classList.toggle("hidden", !state.authenticated);
   els.loginPanel.classList.toggle("hidden", state.authenticated);
@@ -158,6 +208,35 @@ function renderStandings(standings) {
         `
       )
       .join("") || `<tr><td colspan="7">Todavia no hay equipos.</td></tr>`;
+}
+
+function renderMatchDetails(match) {
+  const goals = (match.goals || [])
+    .map((goal) => {
+      const assist = goal.assistName ? `, asistencia: ${escapeHtml(goal.assistName)}` : "";
+      return `<li>${escapeHtml(goal.playerName)} (${escapeHtml(findTeam(goal.teamId).shortName)}${assist})</li>`;
+    })
+    .join("");
+  const cards = (match.cards || [])
+    .map(
+      (card) =>
+        `<li>${escapeHtml(card.playerName)} (${escapeHtml(findTeam(card.teamId).shortName)}) - ${
+          cardLabels[card.type]
+        }</li>`
+    )
+    .join("");
+  const mvp = match.mvp
+    ? `<li>${escapeHtml(match.mvp.playerName)} (${escapeHtml(findTeam(match.mvp.teamId).shortName)})</li>`
+    : "";
+
+  if (!goals && !cards && !mvp) return "";
+  return `
+    <div class="match-detail-grid">
+      <div><strong>Goles</strong><ul>${goals || "<li>Sin registro</li>"}</ul></div>
+      <div><strong>Tarjetas</strong><ul>${cards || "<li>Sin registro</li>"}</ul></div>
+      <div><strong>MVP</strong><ul>${mvp || "<li>Sin registro</li>"}</ul></div>
+    </div>
+  `;
 }
 
 function renderMatches() {
@@ -192,10 +271,40 @@ function renderMatches() {
                 ${escapeHtml(away.name)}
               </span>
             </div>
+            ${renderMatchDetails(match)}
           </article>
         `;
       })
       .join("") || `<div class="match-card">No hay partidos para este filtro.</div>`;
+}
+
+function renderStatRows(rows, valueField, emptyMessage, extra = "") {
+  return (
+    rows
+      .map(
+        (row) => `
+          <tr>
+            <td>${escapeHtml(row.playerName)}</td>
+            <td>${escapeHtml(row.teamName)}</td>
+            ${extra ? extra(row) : `<td><strong>${row[valueField]}</strong></td>`}
+          </tr>
+        `
+      )
+      .join("") || `<tr><td colspan="4">${emptyMessage}</td></tr>`
+  );
+}
+
+function renderStats() {
+  const stats = state.data.stats || { goals: [], assists: [], cards: [], mvps: [] };
+  els.goalsStatsBody.innerHTML = renderStatRows(stats.goals, "goals", "Sin goles registrados.");
+  els.assistsStatsBody.innerHTML = renderStatRows(stats.assists, "assists", "Sin asistencias registradas.");
+  els.cardsStatsBody.innerHTML = renderStatRows(
+    stats.cards,
+    "totalCards",
+    "Sin tarjetas registradas.",
+    (row) => `<td><strong>${row.yellow}</strong></td><td><strong>${row.red}</strong></td>`
+  );
+  els.mvpsStatsBody.innerHTML = renderStatRows(stats.mvps, "mvps", "Sin MVPs registrados.");
 }
 
 function renderAdmin() {
@@ -205,15 +314,10 @@ function renderAdmin() {
   els.settingsForm.name.value = tournament.name;
   els.settingsForm.subtitle.value = tournament.subtitle;
   els.settingsForm.season.value = tournament.season;
+  els.deleteTournamentButton.disabled = state.data.tournaments.length <= 1;
 
-  const teamOptions = state.data.teams
-    .map((team) => `<option value="${escapeHtml(team.id)}">${escapeHtml(team.name)}</option>`)
-    .join("");
-  els.matchForm.homeTeamId.innerHTML = teamOptions;
-  els.matchForm.awayTeamId.innerHTML = teamOptions;
-  if (state.data.teams[1]) {
-    els.matchForm.awayTeamId.value = state.data.teams[1].id;
-  }
+  els.matchForm.homeTeamId.innerHTML = teamOptions();
+  els.matchForm.awayTeamId.innerHTML = teamOptions(state.data.teams[1]?.id || "");
   if (!els.matchForm.date.value) {
     els.matchForm.date.value = toDatetimeLocal(new Date().toISOString());
   }
@@ -236,43 +340,117 @@ function renderAdmin() {
   els.matchesAdminList.innerHTML =
     [...state.data.matches]
       .sort((a, b) => new Date(a.date) - new Date(b.date))
-      .map(
-        (match) => `
-          <form class="admin-row edit-grid match-edit-grid" data-match-id="${escapeHtml(match.id)}">
-            <input name="round" value="${escapeHtml(match.round)}" maxlength="40" required />
-            <input name="date" type="datetime-local" value="${toDatetimeLocal(match.date)}" required />
-            <select name="homeTeamId">${teamOptions}</select>
-            <select name="awayTeamId">${teamOptions}</select>
-            <input name="homeScore" type="number" min="0" max="99" value="${match.homeScore ?? ""}" placeholder="Local" />
-            <input name="awayScore" type="number" min="0" max="99" value="${match.awayScore ?? ""}" placeholder="Visitante" />
-            <select name="status">
-              <option value="scheduled">Pendiente</option>
-              <option value="live">En juego</option>
-              <option value="finished">Finalizado</option>
-            </select>
-            <button class="small-button" type="submit">Guardar</button>
-            <button class="danger-button" type="button" data-delete-match="${escapeHtml(match.id)}">Borrar</button>
-          </form>
-        `
-      )
+      .map(renderAdminMatch)
       .join("") || `<div class="admin-row">No hay partidos.</div>`;
+}
 
-  state.data.matches.forEach((match) => {
-    const form = els.matchesAdminList.querySelector(`[data-match-id="${CSS.escape(match.id)}"]`);
-    if (form) {
-      form.homeTeamId.value = match.homeTeamId;
-      form.awayTeamId.value = match.awayTeamId;
-      form.status.value = match.status;
-    }
-  });
+function renderAdminMatch(match) {
+  return `
+    <form class="admin-row match-admin-card" data-match-id="${escapeHtml(match.id)}">
+      <div class="match-edit-grid">
+        <input name="round" value="${escapeHtml(match.round)}" maxlength="40" required />
+        <input name="date" type="datetime-local" value="${toDatetimeLocal(match.date)}" required />
+        <select name="homeTeamId">${teamOptions(match.homeTeamId)}</select>
+        <select name="awayTeamId">${teamOptions(match.awayTeamId)}</select>
+        <input name="homeScore" type="number" min="0" max="99" value="${match.homeScore ?? ""}" placeholder="Local" />
+        <input name="awayScore" type="number" min="0" max="99" value="${match.awayScore ?? ""}" placeholder="Visitante" />
+        <select name="status">
+          <option value="scheduled" ${match.status === "scheduled" ? "selected" : ""}>Pendiente</option>
+          <option value="live" ${match.status === "live" ? "selected" : ""}>En juego</option>
+          <option value="finished" ${match.status === "finished" ? "selected" : ""}>Finalizado</option>
+        </select>
+      </div>
+      <div class="event-editor">
+        <div class="event-block">
+          <div class="event-head">
+            <strong>Goles y asistencias</strong>
+            <button class="small-button" type="button" data-add-goal>+ Gol</button>
+          </div>
+          <div class="event-rows goals-editor">
+            ${(match.goals || []).map(renderGoalRow).join("")}
+          </div>
+        </div>
+        <div class="event-block">
+          <div class="event-head">
+            <strong>Tarjetas</strong>
+            <button class="small-button" type="button" data-add-card>+ Tarjeta</button>
+          </div>
+          <div class="event-rows cards-editor">
+            ${(match.cards || []).map(renderCardRow).join("")}
+          </div>
+        </div>
+        <div class="event-block">
+          <strong>MVP</strong>
+          <div class="mvp-row">
+            <select name="mvpTeamId">${teamOptions(match.mvp?.teamId || match.homeTeamId)}</select>
+            <input name="mvpPlayerName" value="${escapeHtml(match.mvp?.playerName || "")}" maxlength="80" placeholder="Jugador MVP" />
+          </div>
+        </div>
+      </div>
+      <div class="admin-row-actions">
+        <button class="small-button" type="submit">Guardar partido</button>
+        <button class="danger-button" type="button" data-delete-match="${escapeHtml(match.id)}">Borrar partido</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderGoalRow(goal = {}) {
+  return `
+    <div class="event-row goal-row">
+      <select data-field="teamId">${teamOptions(goal.teamId || state.data.teams[0]?.id || "")}</select>
+      <input data-field="playerName" value="${escapeHtml(goal.playerName || "")}" maxlength="80" placeholder="Goleador" />
+      <input data-field="assistName" value="${escapeHtml(goal.assistName || "")}" maxlength="80" placeholder="Asistencia" />
+      <button class="danger-button" type="button" data-remove-event>Borrar</button>
+    </div>
+  `;
+}
+
+function renderCardRow(card = {}) {
+  return `
+    <div class="event-row card-row">
+      <select data-field="teamId">${teamOptions(card.teamId || state.data.teams[0]?.id || "")}</select>
+      <input data-field="playerName" value="${escapeHtml(card.playerName || "")}" maxlength="80" placeholder="Jugador" />
+      <select data-field="type">
+        <option value="yellow" ${card.type !== "red" ? "selected" : ""}>Amarilla</option>
+        <option value="red" ${card.type === "red" ? "selected" : ""}>Roja</option>
+      </select>
+      <button class="danger-button" type="button" data-remove-event>Borrar</button>
+    </div>
+  `;
 }
 
 function formPayload(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
+function matchPayload(form) {
+  const payload = formPayload(form);
+  payload.goals = Array.from(form.querySelectorAll(".goal-row"))
+    .map((row) => ({
+      teamId: row.querySelector('[data-field="teamId"]').value,
+      playerName: row.querySelector('[data-field="playerName"]').value,
+      assistName: row.querySelector('[data-field="assistName"]').value
+    }))
+    .filter((goal) => goal.playerName.trim());
+  payload.cards = Array.from(form.querySelectorAll(".card-row"))
+    .map((row) => ({
+      teamId: row.querySelector('[data-field="teamId"]').value,
+      playerName: row.querySelector('[data-field="playerName"]').value,
+      type: row.querySelector('[data-field="type"]').value
+    }))
+    .filter((card) => card.playerName.trim());
+  payload.mvp = payload.mvpPlayerName?.trim()
+    ? { teamId: payload.mvpTeamId, playerName: payload.mvpPlayerName }
+    : null;
+  delete payload.mvpTeamId;
+  delete payload.mvpPlayerName;
+  return payload;
+}
+
 async function saveAndRefresh(path, options, successMessage) {
   state.data = await api(path, options);
+  state.selectedTournamentId = state.data.selectedTournamentId;
   render();
   showToast(successMessage);
 }
@@ -302,6 +480,8 @@ document.querySelectorAll("[data-view]").forEach((button) => {
   button.addEventListener("click", () => setView(button.dataset.view));
 });
 
+els.tournamentSelect.addEventListener("change", () => loadData(els.tournamentSelect.value));
+els.adminTournamentSelect.addEventListener("change", () => loadData(els.adminTournamentSelect.value));
 els.matchFilter.addEventListener("change", renderMatches);
 
 els.showPasswordCheckbox.addEventListener("change", () => {
@@ -332,10 +512,27 @@ els.logoutButton.addEventListener("click", async () => {
   showToast("Sesion cerrada.");
 });
 
+els.tournamentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveAndRefresh(
+    "/api/admin/tournaments",
+    { method: "POST", body: JSON.stringify(formPayload(event.currentTarget)) },
+    "Temporada creada."
+  );
+  event.currentTarget.reset();
+});
+
+els.deleteTournamentButton.addEventListener("click", async () => {
+  if (!window.confirm("Borrar esta temporada eliminara sus equipos, partidos y estadisticas.")) {
+    return;
+  }
+  await saveAndRefresh(adminBasePath(), { method: "DELETE" }, "Temporada borrada.");
+});
+
 els.settingsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   await saveAndRefresh(
-    "/api/admin/settings",
+    `${adminBasePath()}/settings`,
     { method: "PUT", body: JSON.stringify(formPayload(event.currentTarget)) },
     "Torneo actualizado."
   );
@@ -365,13 +562,14 @@ els.importDataButton.addEventListener("click", async () => {
   try {
     const content = await readFileAsText(file);
     const payload = JSON.parse(content);
-    if (!window.confirm("Importar este JSON sustituira los datos actuales.")) {
+    if (!window.confirm("Importar este JSON sustituira todos los datos actuales.")) {
       return;
     }
     state.data = await api("/api/admin/import", {
       method: "POST",
       body: JSON.stringify(payload)
     });
+    state.selectedTournamentId = state.data.selectedTournamentId;
     els.importDataInput.value = "";
     els.importDataButton.disabled = true;
     els.importFileName.textContent = "Ningun fichero seleccionado";
@@ -385,7 +583,7 @@ els.importDataButton.addEventListener("click", async () => {
 els.teamForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   await saveAndRefresh(
-    "/api/admin/teams",
+    `${adminBasePath()}/teams`,
     { method: "POST", body: JSON.stringify(formPayload(event.currentTarget)) },
     "Equipo anadido."
   );
@@ -398,7 +596,7 @@ els.teamsAdminList.addEventListener("submit", async (event) => {
   const form = event.target.closest("[data-team-id]");
   if (!form) return;
   await saveAndRefresh(
-    `/api/admin/teams/${encodeURIComponent(form.dataset.teamId)}`,
+    `${adminBasePath()}/teams/${encodeURIComponent(form.dataset.teamId)}`,
     { method: "PUT", body: JSON.stringify(formPayload(form)) },
     "Equipo guardado."
   );
@@ -409,7 +607,7 @@ els.teamsAdminList.addEventListener("click", async (event) => {
   if (!button) return;
   try {
     await saveAndRefresh(
-      `/api/admin/teams/${encodeURIComponent(button.dataset.deleteTeam)}`,
+      `${adminBasePath()}/teams/${encodeURIComponent(button.dataset.deleteTeam)}`,
       { method: "DELETE" },
       "Equipo borrado."
     );
@@ -422,7 +620,7 @@ els.matchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     await saveAndRefresh(
-      "/api/admin/matches",
+      `${adminBasePath()}/matches`,
       { method: "POST", body: JSON.stringify(formPayload(event.currentTarget)) },
       "Partido creado."
     );
@@ -439,8 +637,8 @@ els.matchesAdminList.addEventListener("submit", async (event) => {
   if (!form) return;
   try {
     await saveAndRefresh(
-      `/api/admin/matches/${encodeURIComponent(form.dataset.matchId)}`,
-      { method: "PUT", body: JSON.stringify(formPayload(form)) },
+      `${adminBasePath()}/matches/${encodeURIComponent(form.dataset.matchId)}`,
+      { method: "PUT", body: JSON.stringify(matchPayload(form)) },
       "Partido guardado."
     );
   } catch (error) {
@@ -449,13 +647,30 @@ els.matchesAdminList.addEventListener("submit", async (event) => {
 });
 
 els.matchesAdminList.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-delete-match]");
-  if (!button) return;
-  await saveAndRefresh(
-    `/api/admin/matches/${encodeURIComponent(button.dataset.deleteMatch)}`,
-    { method: "DELETE" },
-    "Partido borrado."
-  );
+  const deleteButton = event.target.closest("[data-delete-match]");
+  if (deleteButton) {
+    await saveAndRefresh(
+      `${adminBasePath()}/matches/${encodeURIComponent(deleteButton.dataset.deleteMatch)}`,
+      { method: "DELETE" },
+      "Partido borrado."
+    );
+    return;
+  }
+
+  const removeEventButton = event.target.closest("[data-remove-event]");
+  if (removeEventButton) {
+    removeEventButton.closest(".event-row").remove();
+    return;
+  }
+
+  const matchForm = event.target.closest("[data-match-id]");
+  if (!matchForm) return;
+  if (event.target.closest("[data-add-goal]")) {
+    matchForm.querySelector(".goals-editor").insertAdjacentHTML("beforeend", renderGoalRow());
+  }
+  if (event.target.closest("[data-add-card]")) {
+    matchForm.querySelector(".cards-editor").insertAdjacentHTML("beforeend", renderCardRow());
+  }
 });
 
 if ("serviceWorker" in navigator) {

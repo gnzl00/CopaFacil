@@ -14,7 +14,7 @@ const CONFIGURED_DATA_FILE = process.env.DATA_FILE || DEFAULT_DATA_FILE;
 let dataFile = CONFIGURED_DATA_FILE;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
-const MAX_BODY_BYTES = 2_000_000;
+const MAX_BODY_BYTES = 5_000_000;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -26,15 +26,19 @@ const MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 
-function defaultData() {
+function makeId(prefix) {
+  return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function defaultTournament() {
   const now = new Date();
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const season = `${now.getFullYear()}-${now.getFullYear() + 1}`;
   return {
-    tournament: {
-      name: "Copa Facil",
-      subtitle: "Resultados, calendario y clasificacion en tiempo real",
-      season: String(now.getFullYear())
-    },
+    id: `season-${season}`,
+    name: "Copa Facil",
+    subtitle: "Resultados, calendario y clasificacion en tiempo real",
+    season,
     teams: [
       { id: "team-atlas", name: "Atlas FC", shortName: "ATL", color: "#2563eb" },
       { id: "team-norte", name: "Norte United", shortName: "NOR", color: "#16a34a" },
@@ -50,7 +54,14 @@ function defaultData() {
         awayTeamId: "team-norte",
         homeScore: 2,
         awayScore: 1,
-        status: "finished"
+        status: "finished",
+        goals: [
+          { id: makeId("goal"), teamId: "team-atlas", playerName: "Jugador Atlas", assistName: "" },
+          { id: makeId("goal"), teamId: "team-atlas", playerName: "Jugador Atlas", assistName: "" },
+          { id: makeId("goal"), teamId: "team-norte", playerName: "Jugador Norte", assistName: "" }
+        ],
+        cards: [],
+        mvp: { teamId: "team-atlas", playerName: "Jugador Atlas" }
       },
       {
         id: "match-2",
@@ -60,10 +71,22 @@ function defaultData() {
         awayTeamId: "team-valle",
         homeScore: null,
         awayScore: null,
-        status: "scheduled"
+        status: "scheduled",
+        goals: [],
+        cards: [],
+        mvp: null
       }
-    ],
-    updatedAt: now.toISOString()
+    ]
+  };
+}
+
+function defaultData() {
+  const tournament = defaultTournament();
+  return {
+    schemaVersion: 2,
+    activeTournamentId: tournament.id,
+    tournaments: [tournament],
+    updatedAt: new Date().toISOString()
   };
 }
 
@@ -114,7 +137,11 @@ function ensureDataFile() {
 function readData() {
   ensureDataFile();
   const raw = fs.readFileSync(dataFile, "utf8");
-  return JSON.parse(raw);
+  const normalized = normalizeData(JSON.parse(raw));
+  if (normalized.changed) {
+    writeData(normalized.data);
+  }
+  return normalized.data;
 }
 
 function writeData(data) {
@@ -122,7 +149,7 @@ function writeData(data) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  const nextData = { ...data, updatedAt: new Date().toISOString() };
+  const nextData = { ...data, schemaVersion: 2, updatedAt: new Date().toISOString() };
   const tempFile = `${dataFile}.${process.pid}.tmp`;
   fs.writeFileSync(tempFile, `${JSON.stringify(nextData, null, 2)}\n`, "utf8");
   fs.renameSync(tempFile, dataFile);
@@ -251,30 +278,271 @@ function clearAdminCookie(res) {
   res.setHeader("Set-Cookie", "cf_admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
 }
 
-function publicPayload(data) {
+function normalizeText(value, fallback, maxLength) {
+  const normalized = String(value || "").trim().replace(/\s+/g, " ");
+  const text = normalized || fallback;
+  return text.slice(0, maxLength);
+}
+
+function normalizeColor(value, fallback = "#2563eb") {
+  const color = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
+}
+
+function normalizeScore(value) {
+  if (value === null || value === "" || typeof value === "undefined") {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 && number <= 99 ? number : null;
+}
+
+function normalizeStatus(value) {
+  return ["scheduled", "live", "finished"].includes(value) ? value : "scheduled";
+}
+
+function normalizeCardType(value) {
+  return value === "red" ? "red" : "yellow";
+}
+
+function normalizeImportedId(value, prefix) {
+  const id = String(value || "").trim();
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) {
+    return makeId(prefix);
+  }
+  return id;
+}
+
+function normalizeTeam(input, existingId) {
+  const name = normalizeText(input.name, "Nuevo equipo", 60);
   return {
-    tournament: data.tournament,
-    teams: data.teams,
-    matches: data.matches,
-    standings: buildStandings(data),
+    id: existingId || normalizeImportedId(input.id, "team"),
+    name,
+    shortName: normalizeText(input.shortName, name.slice(0, 3).toUpperCase(), 8).toUpperCase(),
+    color: normalizeColor(input.color)
+  };
+}
+
+function normalizeGoal(input, tournament) {
+  const teamId = String(input.teamId || "");
+  if (!teamExists(tournament, teamId)) {
+    return null;
+  }
+  const playerName = normalizeText(input.playerName, "", 80);
+  if (!playerName) {
+    return null;
+  }
+  return {
+    id: normalizeImportedId(input.id, "goal"),
+    teamId,
+    playerName,
+    assistName: normalizeText(input.assistName, "", 80)
+  };
+}
+
+function normalizeCard(input, tournament) {
+  const teamId = String(input.teamId || "");
+  if (!teamExists(tournament, teamId)) {
+    return null;
+  }
+  const playerName = normalizeText(input.playerName, "", 80);
+  if (!playerName) {
+    return null;
+  }
+  return {
+    id: normalizeImportedId(input.id, "card"),
+    teamId,
+    playerName,
+    type: normalizeCardType(input.type)
+  };
+}
+
+function normalizeMvp(input, tournament) {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const teamId = String(input.teamId || "");
+  const playerName = normalizeText(input.playerName, "", 80);
+  if (!teamExists(tournament, teamId) || !playerName) {
+    return null;
+  }
+  return { teamId, playerName };
+}
+
+function normalizeMatch(input, tournament, existingId) {
+  const homeTeamId = String(input.homeTeamId || "");
+  const awayTeamId = String(input.awayTeamId || "");
+  if (!teamExists(tournament, homeTeamId) || !teamExists(tournament, awayTeamId)) {
+    throw new Error("Selecciona dos equipos validos.");
+  }
+  if (homeTeamId === awayTeamId) {
+    throw new Error("Un partido necesita dos equipos distintos.");
+  }
+  const status = normalizeStatus(input.status);
+  const homeScore = normalizeScore(input.homeScore);
+  const awayScore = normalizeScore(input.awayScore);
+  const date = new Date(input.date || Date.now());
+  return {
+    id: existingId || normalizeImportedId(input.id, "match"),
+    round: normalizeText(input.round, "Jornada", 40),
+    date: Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(),
+    homeTeamId,
+    awayTeamId,
+    homeScore: status === "scheduled" ? null : homeScore,
+    awayScore: status === "scheduled" ? null : awayScore,
+    status,
+    goals: Array.isArray(input.goals)
+      ? input.goals.map((goal) => normalizeGoal(goal, tournament)).filter(Boolean)
+      : [],
+    cards: Array.isArray(input.cards)
+      ? input.cards.map((card) => normalizeCard(card, tournament)).filter(Boolean)
+      : [],
+    mvp: normalizeMvp(input.mvp, tournament)
+  };
+}
+
+function normalizeTournament(input, existingId) {
+  const season = normalizeText(input.season, `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`, 20);
+  const tournament = {
+    id: existingId || normalizeImportedId(input.id || `season-${season}`, "season"),
+    name: normalizeText(input.name, "Copa Facil", 80),
+    subtitle: normalizeText(input.subtitle, "Resultados, calendario y clasificacion", 120),
+    season,
+    teams: [],
+    matches: []
+  };
+
+  const seenTeams = new Set();
+  tournament.teams = Array.isArray(input.teams)
+    ? input.teams.map((team) => {
+        let id = normalizeImportedId(team.id, "team");
+        while (seenTeams.has(id)) {
+          id = makeId("team");
+        }
+        seenTeams.add(id);
+        return normalizeTeam(team, id);
+      })
+    : [];
+
+  const seenMatches = new Set();
+  tournament.matches = Array.isArray(input.matches)
+    ? input.matches
+        .map((match) => {
+          let id = normalizeImportedId(match.id, "match");
+          while (seenMatches.has(id)) {
+            id = makeId("match");
+          }
+          seenMatches.add(id);
+          try {
+            return normalizeMatch(match, tournament, id);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+    : [];
+
+  return tournament;
+}
+
+function normalizeData(input) {
+  if (!input || typeof input !== "object") {
+    return { data: defaultData(), changed: true };
+  }
+
+  if (Array.isArray(input.tournaments)) {
+    const seen = new Set();
+    const tournaments = input.tournaments.map((tournament) => {
+      let id = normalizeImportedId(tournament.id, "season");
+      while (seen.has(id)) {
+        id = makeId("season");
+      }
+      seen.add(id);
+      return normalizeTournament(tournament, id);
+    });
+    if (!tournaments.length) {
+      tournaments.push(defaultTournament());
+    }
+    const activeTournamentId = tournaments.some((item) => item.id === input.activeTournamentId)
+      ? input.activeTournamentId
+      : tournaments[0].id;
+    return {
+      data: {
+        schemaVersion: 2,
+        activeTournamentId,
+        tournaments,
+        updatedAt: input.updatedAt || new Date().toISOString()
+      },
+      changed: input.schemaVersion !== 2
+    };
+  }
+
+  const oldTournament = normalizeTournament({
+    ...(input.tournament || {}),
+    teams: input.teams || [],
+    matches: input.matches || []
+  });
+  return {
+    data: {
+      schemaVersion: 2,
+      activeTournamentId: oldTournament.id,
+      tournaments: [oldTournament],
+      updatedAt: input.updatedAt || new Date().toISOString()
+    },
+    changed: true
+  };
+}
+
+function getTournament(data, tournamentId) {
+  return (
+    data.tournaments.find((tournament) => tournament.id === tournamentId) ||
+    data.tournaments.find((tournament) => tournament.id === data.activeTournamentId) ||
+    data.tournaments[0]
+  );
+}
+
+function teamExists(tournament, id) {
+  return tournament.teams.some((team) => team.id === id);
+}
+
+function teamName(tournament, id) {
+  return tournament.teams.find((team) => team.id === id)?.name || "Equipo";
+}
+
+function publicPayload(data, selectedTournamentId) {
+  const tournament = getTournament(data, selectedTournamentId);
+  return {
+    tournaments: data.tournaments.map((item) => ({
+      id: item.id,
+      name: item.name,
+      season: item.season
+    })),
+    selectedTournamentId: tournament.id,
+    tournament: {
+      id: tournament.id,
+      name: tournament.name,
+      subtitle: tournament.subtitle,
+      season: tournament.season
+    },
+    teams: tournament.teams,
+    matches: tournament.matches,
+    standings: buildStandings(tournament),
+    stats: buildStats(tournament),
     updatedAt: data.updatedAt
   };
 }
 
 function exportPayload(data) {
   return {
-    exportVersion: 1,
+    exportVersion: 2,
     exportedAt: new Date().toISOString(),
-    tournament: data.tournament,
-    teams: data.teams,
-    matches: data.matches,
-    updatedAt: data.updatedAt
+    ...data
   };
 }
 
-function buildStandings(data) {
+function buildStandings(tournament) {
   const table = new Map(
-    data.teams.map((team) => [
+    tournament.teams.map((team) => [
       team.id,
       {
         teamId: team.id,
@@ -293,7 +561,7 @@ function buildStandings(data) {
     ])
   );
 
-  for (const match of data.matches) {
+  for (const match of tournament.matches) {
     if (
       match.status !== "finished" ||
       !Number.isInteger(match.homeScore) ||
@@ -340,157 +608,73 @@ function buildStandings(data) {
     });
 }
 
-function normalizeText(value, fallback, maxLength) {
-  const normalized = String(value || "").trim().replace(/\s+/g, " ");
-  const text = normalized || fallback;
-  return text.slice(0, maxLength);
-}
-
-function normalizeColor(value, fallback = "#2563eb") {
-  const color = String(value || "").trim();
-  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
-}
-
-function normalizeScore(value) {
-  if (value === null || value === "" || typeof value === "undefined") {
-    return null;
-  }
-  const number = Number(value);
-  return Number.isInteger(number) && number >= 0 && number <= 99 ? number : null;
-}
-
-function normalizeStatus(value) {
-  return ["scheduled", "live", "finished"].includes(value) ? value : "scheduled";
-}
-
-function makeId(prefix) {
-  return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
-}
-
-function teamExists(data, id) {
-  return data.teams.some((team) => team.id === id);
-}
-
-function normalizeTeam(input, existingId) {
-  const name = normalizeText(input.name, "Nuevo equipo", 60);
-  return {
-    id: existingId || makeId("team"),
-    name,
-    shortName: normalizeText(input.shortName, name.slice(0, 3).toUpperCase(), 8).toUpperCase(),
-    color: normalizeColor(input.color)
+function addPlayerStat(map, tournament, teamId, playerName, field) {
+  const name = normalizeText(playerName, "", 80);
+  if (!name) return;
+  const key = `${teamId}:${name.toLocaleLowerCase("es")}`;
+  const row = map.get(key) || {
+    playerName: name,
+    teamId,
+    teamName: teamName(tournament, teamId),
+    goals: 0,
+    assists: 0,
+    yellow: 0,
+    red: 0,
+    totalCards: 0,
+    mvps: 0
   };
+  row[field] += 1;
+  if (field === "yellow" || field === "red") {
+    row.totalCards += 1;
+  }
+  map.set(key, row);
 }
 
-function normalizeMatch(input, data, existingId) {
-  const homeTeamId = String(input.homeTeamId || "");
-  const awayTeamId = String(input.awayTeamId || "");
-  if (!teamExists(data, homeTeamId) || !teamExists(data, awayTeamId)) {
-    throw new Error("Selecciona dos equipos validos.");
-  }
-  if (homeTeamId === awayTeamId) {
-    throw new Error("Un partido necesita dos equipos distintos.");
-  }
-  const status = normalizeStatus(input.status);
-  const homeScore = normalizeScore(input.homeScore);
-  const awayScore = normalizeScore(input.awayScore);
-  return {
-    id: existingId || makeId("match"),
-    round: normalizeText(input.round, "Jornada", 40),
-    date: input.date ? new Date(input.date).toISOString() : new Date().toISOString(),
-    homeTeamId,
-    awayTeamId,
-    homeScore: status === "scheduled" ? null : homeScore,
-    awayScore: status === "scheduled" ? null : awayScore,
-    status
-  };
-}
-
-function normalizeImportedId(value, prefix) {
-  const id = String(value || "").trim();
-  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) {
-    return makeId(prefix);
-  }
-  return id;
-}
-
-function normalizeImportedData(input) {
-  const source = input && input.data ? input.data : input;
-  if (!source || typeof source !== "object") {
-    throw new Error("El fichero JSON no tiene un formato valido.");
-  }
-  if (!Array.isArray(source.teams) || !Array.isArray(source.matches)) {
-    throw new Error("El JSON debe incluir equipos y partidos.");
-  }
-
-  const tournamentSource = source.tournament || {};
-  const tournament = {
-    name: normalizeText(tournamentSource.name, "Copa Facil", 80),
-    subtitle: normalizeText(
-      tournamentSource.subtitle,
-      "Resultados, calendario y clasificacion en tiempo real",
-      120
-    ),
-    season: normalizeText(tournamentSource.season, String(new Date().getFullYear()), 20)
-  };
-
-  const seenTeams = new Set();
-  const teams = source.teams.map((team) => {
-    let id = normalizeImportedId(team.id, "team");
-    while (seenTeams.has(id)) {
-      id = makeId("team");
-    }
-    seenTeams.add(id);
-    return {
-      id,
-      name: normalizeText(team.name, "Equipo", 60),
-      shortName: normalizeText(team.shortName, String(team.name || "EQ").slice(0, 3), 8).toUpperCase(),
-      color: normalizeColor(team.color)
-    };
-  });
-
-  const teamIds = new Set(teams.map((team) => team.id));
-  const seenMatches = new Set();
-  const matches = [];
-  for (const match of source.matches) {
-    const homeTeamId = String(match.homeTeamId || "");
-    const awayTeamId = String(match.awayTeamId || "");
-    if (!teamIds.has(homeTeamId) || !teamIds.has(awayTeamId) || homeTeamId === awayTeamId) {
-      continue;
-    }
-
-    let id = normalizeImportedId(match.id, "match");
-    while (seenMatches.has(id)) {
-      id = makeId("match");
-    }
-    seenMatches.add(id);
-
-    const status = normalizeStatus(match.status);
-    const homeScore = normalizeScore(match.homeScore);
-    const awayScore = normalizeScore(match.awayScore);
-    const date = new Date(match.date);
-    matches.push({
-      id,
-      round: normalizeText(match.round, "Jornada", 40),
-      date: Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString(),
-      homeTeamId,
-      awayTeamId,
-      homeScore: status === "scheduled" ? null : homeScore,
-      awayScore: status === "scheduled" ? null : awayScore,
-      status
+function sortedStats(map, field) {
+  return Array.from(map.values())
+    .filter((row) => row[field] > 0)
+    .sort((a, b) => {
+      if (b[field] !== a[field]) return b[field] - a[field];
+      return a.playerName.localeCompare(b.playerName, "es");
     });
+}
+
+function buildStats(tournament) {
+  const goals = new Map();
+  const assists = new Map();
+  const cards = new Map();
+  const mvps = new Map();
+
+  for (const match of tournament.matches) {
+    for (const goal of match.goals || []) {
+      addPlayerStat(goals, tournament, goal.teamId, goal.playerName, "goals");
+      addPlayerStat(assists, tournament, goal.teamId, goal.assistName, "assists");
+    }
+    for (const card of match.cards || []) {
+      addPlayerStat(cards, tournament, card.teamId, card.playerName, normalizeCardType(card.type));
+    }
+    if (match.mvp) {
+      addPlayerStat(mvps, tournament, match.mvp.teamId, match.mvp.playerName, "mvps");
+    }
   }
 
   return {
-    tournament,
-    teams,
-    matches,
-    updatedAt: new Date().toISOString()
+    goals: sortedStats(goals, "goals"),
+    assists: sortedStats(assists, "assists"),
+    cards: Array.from(cards.values())
+      .filter((row) => row.totalCards > 0)
+      .sort((a, b) => {
+        if (b.totalCards !== a.totalCards) return b.totalCards - a.totalCards;
+        if (b.red !== a.red) return b.red - a.red;
+        return a.playerName.localeCompare(b.playerName, "es");
+      }),
+    mvps: sortedStats(mvps, "mvps")
   };
 }
 
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/public") {
-    sendJson(res, 200, publicPayload(readData()));
+    sendJson(res, 200, publicPayload(readData(), url.searchParams.get("tournamentId")));
     return;
   }
 
@@ -538,86 +722,132 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/admin/import") {
     try {
-      sendJson(res, 200, publicPayload(writeData(normalizeImportedData(body))));
+      const normalized = normalizeData(body).data;
+      sendJson(res, 200, publicPayload(writeData(normalized), normalized.activeTournamentId));
     } catch (error) {
       sendError(res, 400, error.message);
     }
     return;
   }
 
-  if (req.method === "PUT" && url.pathname === "/api/admin/settings") {
-    data.tournament = {
-      name: normalizeText(body.name, data.tournament.name, 80),
-      subtitle: normalizeText(body.subtitle, data.tournament.subtitle, 120),
-      season: normalizeText(body.season, data.tournament.season, 20)
+  if (req.method === "POST" && url.pathname === "/api/admin/tournaments") {
+    const tournament = normalizeTournament({
+      name: body.name,
+      subtitle: body.subtitle,
+      season: body.season,
+      teams: [],
+      matches: []
+    });
+    while (data.tournaments.some((item) => item.id === tournament.id)) {
+      tournament.id = makeId("season");
+    }
+    data.tournaments.push(tournament);
+    data.activeTournamentId = tournament.id;
+    sendJson(res, 201, publicPayload(writeData(data), tournament.id));
+    return;
+  }
+
+  const tournamentMatch = url.pathname.match(/^\/api\/admin\/tournaments\/([^/]+)(?:\/(.*))?$/);
+  if (!tournamentMatch) {
+    sendError(res, 404, "Ruta no encontrada.");
+    return;
+  }
+
+  const tournamentId = decodeURIComponent(tournamentMatch[1]);
+  const rest = tournamentMatch[2] || "";
+  const tournamentIndex = data.tournaments.findIndex((item) => item.id === tournamentId);
+  if (tournamentIndex === -1) {
+    sendError(res, 404, "Temporada no encontrada.");
+    return;
+  }
+  const tournament = data.tournaments[tournamentIndex];
+
+  if (req.method === "DELETE" && rest === "") {
+    if (data.tournaments.length <= 1) {
+      sendError(res, 409, "No puedes borrar la unica temporada.");
+      return;
+    }
+    data.tournaments.splice(tournamentIndex, 1);
+    data.activeTournamentId = data.tournaments[0].id;
+    sendJson(res, 200, publicPayload(writeData(data), data.activeTournamentId));
+    return;
+  }
+
+  if (req.method === "PUT" && rest === "settings") {
+    data.tournaments[tournamentIndex] = {
+      ...tournament,
+      name: normalizeText(body.name, tournament.name, 80),
+      subtitle: normalizeText(body.subtitle, tournament.subtitle, 120),
+      season: normalizeText(body.season, tournament.season, 20)
     };
-    sendJson(res, 200, publicPayload(writeData(data)));
+    data.activeTournamentId = tournament.id;
+    sendJson(res, 200, publicPayload(writeData(data), tournament.id));
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/admin/teams") {
-    data.teams.push(normalizeTeam(body));
-    sendJson(res, 201, publicPayload(writeData(data)));
+  if (req.method === "POST" && rest === "teams") {
+    tournament.teams.push(normalizeTeam(body));
+    sendJson(res, 201, publicPayload(writeData(data), tournament.id));
     return;
   }
 
-  const teamMatch = url.pathname.match(/^\/api\/admin\/teams\/([^/]+)$/);
+  const teamMatch = rest.match(/^teams\/([^/]+)$/);
   if (teamMatch) {
-    const teamId = teamMatch[1];
-    const index = data.teams.findIndex((team) => team.id === teamId);
+    const teamId = decodeURIComponent(teamMatch[1]);
+    const index = tournament.teams.findIndex((team) => team.id === teamId);
     if (index === -1) {
       sendError(res, 404, "Equipo no encontrado.");
       return;
     }
     if (req.method === "PUT") {
-      data.teams[index] = normalizeTeam(body, teamId);
-      sendJson(res, 200, publicPayload(writeData(data)));
+      tournament.teams[index] = normalizeTeam(body, teamId);
+      sendJson(res, 200, publicPayload(writeData(data), tournament.id));
       return;
     }
     if (req.method === "DELETE") {
-      const used = data.matches.some(
+      const used = tournament.matches.some(
         (match) => match.homeTeamId === teamId || match.awayTeamId === teamId
       );
       if (used) {
         sendError(res, 409, "No puedes borrar un equipo con partidos asignados.");
         return;
       }
-      data.teams.splice(index, 1);
-      sendJson(res, 200, publicPayload(writeData(data)));
+      tournament.teams.splice(index, 1);
+      sendJson(res, 200, publicPayload(writeData(data), tournament.id));
       return;
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/api/admin/matches") {
+  if (req.method === "POST" && rest === "matches") {
     try {
-      data.matches.push(normalizeMatch(body, data));
-      sendJson(res, 201, publicPayload(writeData(data)));
+      tournament.matches.push(normalizeMatch(body, tournament));
+      sendJson(res, 201, publicPayload(writeData(data), tournament.id));
     } catch (error) {
       sendError(res, 400, error.message);
     }
     return;
   }
 
-  const matchMatch = url.pathname.match(/^\/api\/admin\/matches\/([^/]+)$/);
+  const matchMatch = rest.match(/^matches\/([^/]+)$/);
   if (matchMatch) {
-    const matchId = matchMatch[1];
-    const index = data.matches.findIndex((match) => match.id === matchId);
+    const matchId = decodeURIComponent(matchMatch[1]);
+    const index = tournament.matches.findIndex((match) => match.id === matchId);
     if (index === -1) {
       sendError(res, 404, "Partido no encontrado.");
       return;
     }
     if (req.method === "PUT") {
       try {
-        data.matches[index] = normalizeMatch(body, data, matchId);
-        sendJson(res, 200, publicPayload(writeData(data)));
+        tournament.matches[index] = normalizeMatch(body, tournament, matchId);
+        sendJson(res, 200, publicPayload(writeData(data), tournament.id));
       } catch (error) {
         sendError(res, 400, error.message);
       }
       return;
     }
     if (req.method === "DELETE") {
-      data.matches.splice(index, 1);
-      sendJson(res, 200, publicPayload(writeData(data)));
+      tournament.matches.splice(index, 1);
+      sendJson(res, 200, publicPayload(writeData(data), tournament.id));
       return;
     }
   }
@@ -646,7 +876,7 @@ function serveStatic(req, res, url) {
     const extension = path.extname(filePath);
     res.writeHead(200, {
       "content-type": MIME_TYPES[extension] || "application/octet-stream",
-      "cache-control": extension === ".html" ? "no-cache" : "public, max-age=3600"
+      "cache-control": extension === ".html" ? "no-store" : "no-cache"
     });
     res.end(content);
   });

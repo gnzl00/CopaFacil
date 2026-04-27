@@ -7,7 +7,7 @@
     <title>Copa Facil</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css?v=4" />
+    <link rel="stylesheet" href="/styles.css?v=5" />
   </head>
   <body>
     <header class="app-header">
@@ -20,6 +20,7 @@
         </div>
       </div>
       <nav class="top-actions" aria-label="Navegacion principal">
+        <select id="tournamentSelect" aria-label="Seleccionar temporada"></select>
         <button class="ghost-button" type="button" data-view="public">Resultados</button>
         <button class="ghost-button" type="button" data-view="admin">Admin</button>
         <button class="primary-button hidden" id="logoutButton" type="button">Salir</button>
@@ -89,6 +90,93 @@
             <div class="match-list" id="matchesList"></div>
           </section>
         </div>
+
+        <div class="stats-grid">
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Ranking</p>
+                <h2>Goleadores</h2>
+              </div>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Jugador</th>
+                    <th>Equipo</th>
+                    <th>Goles</th>
+                  </tr>
+                </thead>
+                <tbody id="goalsStatsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Ranking</p>
+                <h2>Asistencias</h2>
+              </div>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Jugador</th>
+                    <th>Equipo</th>
+                    <th>Ast</th>
+                  </tr>
+                </thead>
+                <tbody id="assistsStatsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Disciplina</p>
+                <h2>Tarjetas</h2>
+              </div>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Jugador</th>
+                    <th>Equipo</th>
+                    <th>A</th>
+                    <th>R</th>
+                  </tr>
+                </thead>
+                <tbody id="cardsStatsBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Premios</p>
+                <h2>MVPs</h2>
+              </div>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Jugador</th>
+                    <th>Equipo</th>
+                    <th>MVP</th>
+                  </tr>
+                </thead>
+                <tbody id="mvpsStatsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section class="view hidden" id="adminView">
@@ -122,6 +210,30 @@
         </div>
 
         <div class="admin-grid hidden" id="adminPanel">
+          <section class="panel">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Temporadas</p>
+                <h2>Gestion</h2>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label>
+                Temporada activa
+                <select id="adminTournamentSelect"></select>
+              </label>
+              <form id="tournamentForm" class="season-form">
+                <input name="season" placeholder="2026-2027" maxlength="20" required />
+                <input name="name" placeholder="Nombre del torneo" maxlength="80" required />
+                <input name="subtitle" placeholder="Subtitulo" maxlength="120" />
+                <button class="primary-button" type="submit">Crear temporada</button>
+              </form>
+              <button class="danger-button" id="deleteTournamentButton" type="button">
+                Borrar temporada activa
+              </button>
+            </div>
+          </section>
+
           <section class="panel">
             <div class="section-head">
               <div>
@@ -215,6 +327,6 @@
     </main>
 
     <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=4" defer></script>
+    <script src="/app.js?v=5" defer></script>
   </body>
 </html>
