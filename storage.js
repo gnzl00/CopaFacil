@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const DEFAULT_DATA_FILE = path.join(__dirname, "data", "copafacil.json");
 
 function isPermissionError(error) {

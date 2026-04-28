@@ -15,6 +15,7 @@ const ONE_WEEK_SECONDS = 7 * 24 * 60 * 60;
 const MAX_BODY_BYTES = 8_000_000;
 const MAX_LOGO_DATA_URL_LENGTH = 70_000;
 const MAX_ROUNDS = 60;
+const DEFAULT_CONSEQUENCES = { promotion: 0, playoff: 0, relegation: 0 };
 let store;
 
 const MIME_TYPES = {
@@ -42,6 +43,7 @@ function defaultTournament() {
     season,
     roundCount: 1,
     rounds: ["Jornada 1"],
+    consequences: { ...DEFAULT_CONSEQUENCES },
     teams: [
       { id: "team-atlas", name: "Atlas FC", shortName: "ATL", logoDataUrl: "" },
       { id: "team-norte", name: "Norte United", shortName: "NOR", logoDataUrl: "" },
@@ -86,7 +88,7 @@ function defaultTournament() {
 function defaultData() {
   const tournament = defaultTournament();
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     activeTournamentId: tournament.id,
     tournaments: [tournament],
     updatedAt: new Date().toISOString()
@@ -245,6 +247,35 @@ function normalizeRoundCount(value, fallback = 1) {
   return Math.min(MAX_ROUNDS, Math.max(1, number));
 }
 
+function normalizeConsequenceCount(value) {
+  const number = Number(value);
+  if (!Number.isInteger(number)) {
+    return 0;
+  }
+  return Math.min(40, Math.max(0, number));
+}
+
+function normalizeConsequences(input = {}) {
+  return {
+    promotion: normalizeConsequenceCount(input.promotion),
+    playoff: normalizeConsequenceCount(input.playoff),
+    relegation: normalizeConsequenceCount(input.relegation)
+  };
+}
+
+function consequenceForPosition(position, totalTeams, consequences = DEFAULT_CONSEQUENCES) {
+  if (position <= consequences.promotion) {
+    return { type: "promotion", label: "Ascenso" };
+  }
+  if (position <= consequences.promotion + consequences.playoff) {
+    return { type: "playoff", label: "Playoff" };
+  }
+  if (consequences.relegation > 0 && position > totalTeams - consequences.relegation) {
+    return { type: "relegation", label: "Descenso" };
+  }
+  return { type: "none", label: "" };
+}
+
 function defaultRoundName(index) {
   return `Jornada ${index + 1}`;
 }
@@ -395,6 +426,7 @@ function normalizeTournament(input, existingId) {
     season,
     roundCount: 1,
     rounds: [],
+    consequences: normalizeConsequences(input.consequences),
     teams: [],
     matches: []
   };
@@ -458,12 +490,12 @@ function normalizeData(input) {
       : tournaments[0].id;
     return {
       data: {
-        schemaVersion: 3,
+        schemaVersion: 4,
         activeTournamentId,
         tournaments,
         updatedAt: input.updatedAt || new Date().toISOString()
       },
-      changed: input.schemaVersion !== 3
+      changed: input.schemaVersion !== 4
     };
   }
 
@@ -474,7 +506,7 @@ function normalizeData(input) {
   });
   return {
     data: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       activeTournamentId: oldTournament.id,
       tournaments: [oldTournament],
       updatedAt: input.updatedAt || new Date().toISOString()
@@ -514,7 +546,8 @@ function publicPayload(data, selectedTournamentId) {
       subtitle: tournament.subtitle,
       season: tournament.season,
       roundCount: tournament.roundCount,
-      rounds: tournament.rounds
+      rounds: tournament.rounds,
+      consequences: tournament.consequences
     },
     rounds: tournament.rounds,
     teams: tournament.teams,
@@ -583,7 +616,7 @@ function buildStandings(tournament) {
     }
   }
 
-  return Array.from(table.values())
+  const sorted = Array.from(table.values())
     .map((row) => ({ ...row, goalDifference: row.goalsFor - row.goalsAgainst }))
     .sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
@@ -591,6 +624,12 @@ function buildStandings(tournament) {
       if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
       return a.teamName.localeCompare(b.teamName, "es");
     });
+
+  return sorted.map((row, index) => ({
+    ...row,
+    position: index + 1,
+    consequence: consequenceForPosition(index + 1, sorted.length, tournament.consequences)
+  }));
 }
 
 function addPlayerStat(map, tournament, teamId, playerName, field) {
@@ -706,6 +745,11 @@ async function handleApi(req, res, url) {
       subtitle: body.subtitle,
       season: body.season,
       roundCount: body.roundCount,
+      consequences: {
+        promotion: body.promotionCount,
+        playoff: body.playoffCount,
+        relegation: body.relegationCount
+      },
       teams: [],
       matches: []
     });
@@ -752,7 +796,12 @@ async function handleApi(req, res, url) {
       subtitle: normalizeText(body.subtitle, tournament.subtitle, 120),
       season: normalizeText(body.season, tournament.season, 20),
       rounds,
-      roundCount: rounds.length
+      roundCount: rounds.length,
+      consequences: normalizeConsequences({
+        promotion: body.promotionCount,
+        playoff: body.playoffCount,
+        relegation: body.relegationCount
+      })
     };
     data.activeTournamentId = tournament.id;
     sendJson(res, 200, publicPayload(await store.write(data), tournament.id));

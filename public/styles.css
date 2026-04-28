@@ -305,7 +305,7 @@ main {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 520px;
+  min-width: 580px;
 }
 
 .compact-table table {
@@ -322,6 +322,16 @@ td {
 
 th:first-child,
 td:first-child {
+  text-align: left;
+}
+
+.standings-panel th:first-child,
+.standings-panel td:first-child {
+  text-align: center;
+}
+
+.standings-panel th:nth-child(2),
+.standings-panel td:nth-child(2) {
   text-align: left;
 }
 
@@ -370,10 +380,89 @@ th {
   height: 40px;
 }
 
+.position-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.standing-promotion {
+  box-shadow: inset 4px 0 #16a34a;
+}
+
+.standing-promotion .position-badge {
+  background: #dcfce7;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.standing-playoff {
+  box-shadow: inset 4px 0 #f59e0b;
+}
+
+.standing-playoff .position-badge {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.standing-relegation {
+  box-shadow: inset 4px 0 #ef4444;
+}
+
+.standing-relegation .position-badge {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
 .match-list,
 .admin-list {
   display: grid;
   gap: 10px;
+}
+
+.admin-collapse {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.admin-collapse summary {
+  cursor: pointer;
+  padding: 12px;
+  font-weight: 850;
+}
+
+.admin-collapse summary span {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.collapse-content {
+  padding: 0 10px 10px;
+}
+
+.admin-list-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 10px;
+}
+
+.admin-list-tools label {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 750;
 }
 
 .match-card,

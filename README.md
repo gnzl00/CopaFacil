@@ -80,8 +80,10 @@ Como no se va a usar Firebase Storage, los logos se guardan optimizados dentro d
 - Solo el administrador autenticado puede crear temporadas, editar nombre del torneo, equipos y partidos.
 - Cada equipo puede tener un logo propio en PNG, JPG o WEBP. La app lo optimiza antes de guardarlo.
 - Cada temporada puede definir un numero de jornadas y la vista publica permite filtrar los partidos por jornada.
+- Cada temporada puede definir puestos de ascenso directo, playoff y descenso. La clasificacion muestra posicion y colorea esos puestos.
 - Al guardar un partido, el administrador puede registrar goleadores, asistentes, tarjetas amarillas/rojas y MVP.
 - La vista publica calcula tablas de clasificacion, maximos goleadores, asistentes, tarjetas y MVPs por temporada.
+- En el panel de administrador, los equipos y partidos existentes se muestran en bloques desplegables. Los partidos tambien se pueden filtrar por jornada.
 - Cada visitante puede marcar equipos favoritos en su navegador y activar notificaciones locales de resultados mientras la web/PWA este abierta.
 
 ## PWA y futuro Android

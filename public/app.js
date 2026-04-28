@@ -4,6 +4,7 @@ const state = {
   view: "public",
   selectedTournamentId: null,
   selectedRound: "all",
+  selectedAdminRound: "all",
   favoriteTeamIds: new Set(),
   pendingServiceWorker: null
 };
@@ -41,8 +42,11 @@ const els = {
   deleteTournamentButton: document.querySelector("#deleteTournamentButton"),
   settingsForm: document.querySelector("#settingsForm"),
   teamForm: document.querySelector("#teamForm"),
+  teamsCount: document.querySelector("#teamsCount"),
   teamsAdminList: document.querySelector("#teamsAdminList"),
   matchForm: document.querySelector("#matchForm"),
+  adminRoundFilter: document.querySelector("#adminRoundFilter"),
+  matchesCount: document.querySelector("#matchesCount"),
   matchesAdminList: document.querySelector("#matchesAdminList"),
   toast: document.querySelector("#toast"),
   updateBanner: document.querySelector("#updateBanner"),
@@ -155,6 +159,18 @@ function roundOptions(selectedRound = "") {
         )}</option>`
     )
     .join("");
+}
+
+function roundFilterOptions(selectedRound = "all", label = "Todas las jornadas") {
+  return [
+    `<option value="all">${escapeHtml(label)}</option>`,
+    ...(state.data.rounds || []).map(
+      (round) =>
+        `<option value="${escapeHtml(round)}" ${round === selectedRound ? "selected" : ""}>${escapeHtml(
+          round
+        )}</option>`
+    )
+  ].join("");
 }
 
 function showToast(message) {
@@ -342,13 +358,7 @@ function renderRoundSelector() {
     state.selectedRound = "all";
   }
   els.roundFilter.innerHTML = [
-    `<option value="all">Todas las jornadas</option>`,
-    ...rounds.map(
-      (round) =>
-        `<option value="${escapeHtml(round)}" ${round === state.selectedRound ? "selected" : ""}>${escapeHtml(
-          round
-        )}</option>`
-    )
+    roundFilterOptions(state.selectedRound, "Todas las jornadas")
   ].join("");
 }
 
@@ -357,7 +367,10 @@ function renderStandings(standings) {
     standings
       .map(
         (row) => `
-          <tr>
+          <tr class="standing-row standing-${escapeHtml(row.consequence?.type || "none")}">
+            <td>
+              <span class="position-badge" title="${escapeHtml(row.consequence?.label || "")}">${row.position}</span>
+            </td>
             <td>
               <span class="team-cell">
                 ${teamLogoMarkup(row)}
@@ -373,7 +386,7 @@ function renderStandings(standings) {
           </tr>
         `
       )
-      .join("") || `<tr><td colspan="7">Todavia no hay equipos.</td></tr>`;
+      .join("") || `<tr><td colspan="8">Todavia no hay equipos.</td></tr>`;
 }
 
 function renderMatchDetails(match) {
@@ -502,6 +515,9 @@ function renderAdmin() {
   els.settingsForm.subtitle.value = tournament.subtitle;
   els.settingsForm.season.value = tournament.season;
   els.settingsForm.roundCount.value = tournament.roundCount || state.data.rounds?.length || 1;
+  els.settingsForm.promotionCount.value = tournament.consequences?.promotion || 0;
+  els.settingsForm.playoffCount.value = tournament.consequences?.playoff || 0;
+  els.settingsForm.relegationCount.value = tournament.consequences?.relegation || 0;
   els.deleteTournamentButton.disabled = state.data.tournaments.length <= 1;
 
   els.matchForm.round.innerHTML = roundOptions(state.data.rounds?.[0] || "");
@@ -511,6 +527,7 @@ function renderAdmin() {
     els.matchForm.date.value = toDatetimeLocal(new Date().toISOString());
   }
 
+  els.teamsCount.textContent = state.data.teams.length;
   els.teamsAdminList.innerHTML =
     state.data.teams
       .map(
@@ -536,11 +553,18 @@ function renderAdmin() {
       )
       .join("") || `<div class="admin-row">No hay equipos.</div>`;
 
+  if (state.selectedAdminRound !== "all" && !(state.data.rounds || []).includes(state.selectedAdminRound)) {
+    state.selectedAdminRound = "all";
+  }
+  els.adminRoundFilter.innerHTML = roundFilterOptions(state.selectedAdminRound, "Todas");
+  const adminMatches = [...state.data.matches]
+    .filter((match) => state.selectedAdminRound === "all" || match.round === state.selectedAdminRound)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  els.matchesCount.textContent = state.data.matches.length;
   els.matchesAdminList.innerHTML =
-    [...state.data.matches]
-      .sort((a, b) => new Date(a.date) - new Date(b.date))
+    adminMatches
       .map(renderAdminMatch)
-      .join("") || `<div class="admin-row">No hay partidos.</div>`;
+      .join("") || `<div class="admin-row">No hay partidos para esta jornada.</div>`;
 }
 
 function renderAdminMatch(match) {
@@ -724,10 +748,12 @@ document.querySelectorAll("[data-view]").forEach((button) => {
 
 els.tournamentSelect.addEventListener("change", () => {
   state.selectedRound = "all";
+  state.selectedAdminRound = "all";
   loadData(els.tournamentSelect.value);
 });
 els.adminTournamentSelect.addEventListener("change", () => {
   state.selectedRound = "all";
+  state.selectedAdminRound = "all";
   loadData(els.adminTournamentSelect.value);
 });
 els.roundFilter.addEventListener("change", () => {
@@ -735,6 +761,10 @@ els.roundFilter.addEventListener("change", () => {
   renderMatches();
 });
 els.matchFilter.addEventListener("change", renderMatches);
+els.adminRoundFilter.addEventListener("change", () => {
+  state.selectedAdminRound = els.adminRoundFilter.value;
+  renderAdmin();
+});
 
 els.favoriteTeamsList.addEventListener("change", (event) => {
   const input = event.target.closest('input[type="checkbox"]');
